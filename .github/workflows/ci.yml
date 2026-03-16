@@ -1,0 +1,11 @@
+name: CI
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show files
+        run: ls -la
+      - name: Hello
+        run: echo "Hello from localrunner!"

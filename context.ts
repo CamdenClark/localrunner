@@ -31,9 +31,31 @@ export async function getRepoContext(): Promise<RepoContext> {
   };
 }
 
+// Serialize an event payload object into the {t, d} context format
+function serializeEventPayload(payload: object): { t: number; d: any[] } {
+  const entries = Object.entries(payload).map(([k, v]) => {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      return { k, v: serializeEventPayload(v) };
+    }
+    return { k, v };
+  });
+  return { t: 2, d: entries };
+}
+
 export function buildGitHubContextData(
   ctx: RepoContext,
+  eventName: string = "push",
+  eventPayload: object = {},
+  workflowName: string = "Local Workflow",
+  jobName: string = "local_job",
 ): object {
+  const headRef = eventName === "pull_request"
+    ? (eventPayload as any)?.pull_request?.head?.ref || ""
+    : "";
+  const baseRef = eventName === "pull_request"
+    ? (eventPayload as any)?.pull_request?.base?.ref || ""
+    : "";
+
   return {
     t: 2,
     d: [
@@ -41,16 +63,16 @@ export function buildGitHubContextData(
       { k: "repository_owner", v: ctx.owner },
       { k: "sha", v: ctx.sha },
       { k: "ref", v: ctx.ref },
-      { k: "head_ref", v: "" },
-      { k: "base_ref", v: "" },
-      { k: "event_name", v: "push" },
-      { k: "workflow", v: "Local Workflow" },
+      { k: "head_ref", v: headRef },
+      { k: "base_ref", v: baseRef },
+      { k: "event_name", v: eventName },
+      { k: "workflow", v: workflowName },
       { k: "run_id", v: "1" },
       { k: "run_number", v: "1" },
       { k: "run_attempt", v: "1" },
       { k: "actor", v: ctx.owner },
       { k: "triggering_actor", v: ctx.owner },
-      { k: "event", v: { t: 2, d: [] } },
+      { k: "event", v: serializeEventPayload(eventPayload) },
       { k: "server_url", v: "https://github.com" },
       { k: "api_url", v: "https://api.github.com" },
       { k: "graphql_url", v: "https://api.github.com/graphql" },
@@ -65,7 +87,7 @@ export function buildGitHubContextData(
       { k: "action_ref", v: "" },
       { k: "action_repository", v: "" },
       { k: "action_status", v: "" },
-      { k: "job", v: "local_job" },
+      { k: "job", v: jobName },
       { k: "path", v: "" },
       { k: "env", v: "" },
       { k: "step_summary", v: "" },
