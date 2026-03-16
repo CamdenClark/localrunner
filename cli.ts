@@ -2,7 +2,7 @@
 import { parseArgs } from "util";
 import { join, resolve, basename } from "path";
 import { getRepoContext } from "./context";
-import { parseWorkflow, matchesEvent, workflowStepsToRunnerSteps } from "./workflow";
+import { parseWorkflow, matchesEvent, normalizeOn, workflowStepsToRunnerSteps } from "./workflow";
 import { generateEventPayload } from "./events";
 import { scriptStep, actionStep } from "./server";
 import { startRun } from "./orchestrator";
@@ -168,7 +168,22 @@ async function main() {
   const repoCtx = await getRepoContext();
   console.log(`Repo: ${repoCtx.fullName} (${repoCtx.sha.slice(0, 8)})\n`);
 
-  const eventPayload = await generateEventPayload(eventName, repoCtx, payloadOverrides);
+  // Extract workflow_dispatch input defaults from the workflow definition
+  let inputDefaults: Record<string, string> | undefined;
+  if (eventName === "workflow_dispatch") {
+    const onConfig = normalizeOn(workflow.on);
+    const dispatchConfig = onConfig["workflow_dispatch"] as { inputs?: Record<string, { default?: string }> } | null;
+    if (dispatchConfig?.inputs) {
+      inputDefaults = {};
+      for (const [key, config] of Object.entries(dispatchConfig.inputs)) {
+        if (config?.default !== undefined) {
+          inputDefaults[key] = String(config.default);
+        }
+      }
+    }
+  }
+
+  const eventPayload = await generateEventPayload(eventName, repoCtx, payloadOverrides, inputDefaults);
 
   // Build expression context and convert steps (evaluating ${{ }} expressions)
   const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName);

@@ -101,10 +101,10 @@ async function generatePullRequestPayload(ctx: RepoContext): Promise<object> {
   };
 }
 
-function generateWorkflowDispatchPayload(ctx: RepoContext): object {
+function generateWorkflowDispatchPayload(ctx: RepoContext, inputDefaults?: Record<string, string>): object {
   return {
     ref: ctx.ref,
-    inputs: {},
+    inputs: inputDefaults ?? {},
     repository: repoPayload(ctx),
     sender: senderPayload(ctx),
     workflow: "",
@@ -115,6 +115,7 @@ export async function generateEventPayload(
   eventName: string,
   ctx: RepoContext,
   overrides?: object,
+  inputDefaults?: Record<string, string>,
 ): Promise<object> {
   let payload: object;
 
@@ -126,7 +127,7 @@ export async function generateEventPayload(
       payload = await generatePullRequestPayload(ctx);
       break;
     case "workflow_dispatch":
-      payload = generateWorkflowDispatchPayload(ctx);
+      payload = generateWorkflowDispatchPayload(ctx, inputDefaults);
       break;
     default:
       // For unknown events, provide minimal payload
