@@ -1,14 +1,18 @@
 import { randomUUID } from "crypto";
+import { getRepoContext, buildGitHubContextData } from "./context";
 
 const PORT = 9637;
 const SESSION_ID = randomUUID();
 const PLAN_ID = randomUUID();
 const TIMELINE_ID = randomUUID();
 const JOB_ID = randomUUID();
-const STEP_ID = randomUUID();
 
 let jobDispatched = false;
 let jobCompleted = false;
+
+// Resolve repo context from gh CLI + git
+const repoCtx = await getRepoContext();
+console.log(`Repo: ${repoCtx.fullName} (${repoCtx.sha.slice(0, 8)})`);
 
 function makeJwt(): string {
   const header = Buffer.from(
@@ -24,15 +28,66 @@ function makeJwt(): string {
       exp: now + 3600,
     })
   ).toString("base64url");
-  // Fake signature — runner parses but doesn't verify
   const sig = Buffer.from("localsignature").toString("base64url");
   return `${header}.${payload}.${sig}`;
 }
 
 const LOCAL_JWT = makeJwt();
 
-// The job message the runner will execute
-function buildJobMessage(): object {
+// --- Step builders ---
+
+function scriptStep(
+  script: string,
+  displayName?: string
+): object {
+  return {
+    type: "Action",
+    reference: { type: "Script" },
+    id: randomUUID(),
+    name: "__run",
+    displayName: displayName || `Run ${script.slice(0, 40)}`,
+    contextName: `run_${randomUUID().slice(0, 8)}`,
+    condition: "success()",
+    inputs: {
+      type: 2,
+      map: [{ Key: "script", Value: script }],
+    },
+  };
+}
+
+function actionStep(
+  action: string,
+  ref: string,
+  displayName?: string,
+  inputs?: Record<string, string>
+): object {
+  const inputMap = inputs
+    ? Object.entries(inputs).map(([k, v]) => ({ Key: k, Value: v }))
+    : [];
+  return {
+    type: "Action",
+    reference: {
+      type: "Repository",
+      name: action,
+      ref: ref,
+      repositoryType: "GitHub",
+      path: "",
+    },
+    id: randomUUID(),
+    name: action,
+    displayName: displayName || `Run ${action}@${ref}`,
+    contextName: action.replace(/[^a-zA-Z0-9]/g, "_"),
+    condition: "success()",
+    inputs: {
+      type: 2,
+      map: inputMap,
+    },
+  };
+}
+
+// --- Job message ---
+
+function buildJobMessage(steps: object[]): object {
   return {
     messageType: "RunnerJobRequest",
     plan: {
@@ -76,63 +131,146 @@ function buildJobMessage(): object {
           properties: {
             id: "github",
             type: "GitHub",
-            url: `file://${process.cwd()}`,
-            version: "main",
+            url: `https://github.com/${repoCtx.fullName}`,
+            version: repoCtx.ref,
           },
         },
       ],
     },
     contextData: {
-      github: {
+      github: buildGitHubContextData(repoCtx),
+      strategy: { t: 2, d: [] },
+      matrix: { t: 2, d: [] },
+      job: { t: 2, d: [] },
+      runner: {
         t: 2,
         d: [
-          { k: "repository", v: "local/localrunner" },
-          { k: "repository_owner", v: "local" },
-          { k: "sha", v: "0000000000000000000000000000000000000000" },
-          { k: "ref", v: "refs/heads/main" },
-          { k: "event_name", v: "push" },
-          { k: "workflow", v: "Local Workflow" },
-          { k: "run_id", v: "1" },
-          { k: "run_number", v: "1" },
-          { k: "actor", v: "local" },
-          { k: "event", v: { t: 2, d: [] } },
-          { k: "server_url", v: `http://localhost:${PORT}` },
-          { k: "api_url", v: `http://localhost:${PORT}/api` },
+          { k: "os", v: "macOS" },
+          { k: "arch", v: "ARM64" },
+          { k: "name", v: "local-runner" },
+          { k: "tool_cache", v: "" },
+          { k: "temp", v: "/tmp" },
+          { k: "workspace", v: "" },
+          { k: "debug", v: "" },
         ],
       },
     },
     variables: {
       "system.culture": { value: "en-US" },
-      "system.github.token": { value: LOCAL_JWT, isSecret: true },
+      "system.github.token": { value: repoCtx.token, isSecret: true },
       "system.github.job": { value: "local_job" },
+      "system.github.launch_endpoint": {
+        value: `http://localhost:${PORT}`,
+      },
     },
     mask: [],
-    steps: [
-      {
-        type: "Action",
-        reference: { type: "Script" },
-        id: STEP_ID,
-        name: "__run",
-        displayName: "Run echo hello world",
-        contextName: "run_echo",
-        condition: "success()",
-        inputs: {
-          type: 2,
-          map: [
-            {
-              Key: "script",
-              Value: "echo 'Hello from local GitHub Actions runner!'",
-            },
-          ],
-        },
-      },
-    ],
+    steps,
     workspace: { clean: null },
     fileTable: [],
   };
 }
 
-// Connection data with route templates for the VSS SDK
+// --- Action resolution: resolve action refs via GitHub API ---
+
+async function resolveActions(
+  actions: { action: string; version: string; path: string }[]
+): Promise<Record<string, object>> {
+  const result: Record<string, object> = {};
+
+  for (const { action, version, path } of actions) {
+    const key = `${action}@${version}`;
+    console.log(`[actions] Resolving ${key}...`);
+
+    try {
+      // Resolve the ref to a SHA via GitHub API
+      const refRes = await fetch(
+        `https://api.github.com/repos/${action}/git/ref/tags/${version}`,
+        {
+          headers: {
+            Accept: "application/vnd.github.v3+json",
+            "User-Agent": "localrunner",
+            Authorization: `Bearer ${repoCtx.token}`,
+          },
+        }
+      );
+
+      let sha = version;
+      if (refRes.ok) {
+        const refData = (await refRes.json()) as any;
+        sha = refData.object.sha;
+
+        // If it's an annotated tag, dereference to the commit
+        if (refData.object.type === "tag") {
+          const tagRes = await fetch(refData.object.url, {
+            headers: {
+              Accept: "application/vnd.github.v3+json",
+              "User-Agent": "localrunner",
+              ...(process.env.GITHUB_TOKEN
+                ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
+                : {}),
+            },
+          });
+          if (tagRes.ok) {
+            const tagData = (await tagRes.json()) as any;
+            sha = tagData.object.sha;
+          }
+        }
+      } else {
+        // Try as a branch
+        const branchRes = await fetch(
+          `https://api.github.com/repos/${action}/git/ref/heads/${version}`,
+          {
+            headers: {
+              Accept: "application/vnd.github.v3+json",
+              "User-Agent": "localrunner",
+              ...(process.env.GITHUB_TOKEN
+                ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
+                : {}),
+            },
+          }
+        );
+        if (branchRes.ok) {
+          const branchData = (await branchRes.json()) as any;
+          sha = branchData.object.sha;
+        }
+      }
+
+      console.log(`[actions] Resolved ${key} -> ${sha.slice(0, 12)}`);
+
+      result[key] = {
+        name: action,
+        resolved_name: action,
+        resolved_sha: sha,
+        tar_url: `https://api.github.com/repos/${action}/tarball/${sha}`,
+        zip_url: `https://api.github.com/repos/${action}/zipball/${sha}`,
+        version: version,
+        authentication: {
+          token: repoCtx.token,
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+        },
+      };
+    } catch (err) {
+      console.error(`[actions] Failed to resolve ${key}:`, err);
+      result[key] = {
+        name: action,
+        resolved_name: action,
+        resolved_sha: version,
+        tar_url: `https://api.github.com/repos/${action}/tarball/${version}`,
+        zip_url: `https://api.github.com/repos/${action}/zipball/${version}`,
+        version: version,
+        authentication: {
+          token: repoCtx.token,
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+        },
+      };
+    }
+  }
+
+  return result;
+}
+
+// --- Connection data ---
+
 function buildConnectionData(): object {
   return {
     authenticatedUser: { id: "00000000-0000-0000-0000-000000000001" },
@@ -156,12 +294,21 @@ function buildConnectionData(): object {
   };
 }
 
+// --- Define the job steps ---
+
+const jobSteps: object[] = [
+  actionStep("actions/checkout", "v4", "Checkout"),
+  scriptStep("echo 'Hello from local GitHub Actions runner!'"),
+  scriptStep("ls -la"),
+];
+
+// --- Server ---
+
 Bun.serve({
   port: PORT,
   routes: {
-    // OAuth token endpoint
     "/_apis/oauth2/token": {
-      POST: async (req) => {
+      POST: async () => {
         console.log("[auth] Token request");
         return Response.json({
           access_token: LOCAL_JWT,
@@ -170,17 +317,15 @@ Bun.serve({
         });
       },
     },
-
-    // Connection data (bootstrap)
     "/_apis/connectionData": {
-      GET: (req) => {
+      GET: () => {
         console.log("[connect] Connection data request");
         return Response.json(buildConnectionData());
       },
     },
   },
 
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
     const path = url.pathname;
     const method = req.method;
@@ -189,9 +334,8 @@ Bun.serve({
 
     // --- Broker endpoints ---
 
-    // Create session
     if (method === "POST" && path === "/session") {
-      console.log("[session] Created session", SESSION_ID);
+      console.log("[session] Created");
       return Response.json({
         sessionId: SESSION_ID,
         ownerName: "local",
@@ -200,13 +344,11 @@ Bun.serve({
       });
     }
 
-    // Delete session
     if (method === "DELETE" && path === "/session") {
-      console.log("[session] Deleted session");
+      console.log("[session] Deleted");
       return Response.json({});
     }
 
-    // Long-poll for messages
     if (method === "GET" && path === "/message") {
       if (!jobDispatched) {
         jobDispatched = true;
@@ -224,57 +366,61 @@ Bun.serve({
           }),
         });
       }
-      // No more messages - long poll (return 200 empty after delay)
       if (jobCompleted) {
         return new Response(null, { status: 200 });
       }
-      // Keep the runner waiting
       return new Promise((resolve) => {
         setTimeout(() => resolve(new Response(null, { status: 200 })), 5000);
       });
     }
 
-    // Acknowledge message
     if (method === "POST" && path === "/acknowledge") {
-      console.log("[ack] Job acknowledged");
       return Response.json({});
     }
 
     // --- Run service endpoints ---
 
-    // Acquire job (V2 flow)
     if (method === "POST" && path === "/acquirejob") {
       console.log("[job] Job acquired");
-      return Response.json(buildJobMessage());
+      return Response.json(buildJobMessage(jobSteps));
     }
 
-    // Renew job
     if (method === "POST" && path === "/renewjob") {
       return Response.json({
         lockedUntil: new Date(Date.now() + 3600000).toISOString(),
       });
     }
 
-    // Complete job
     if (method === "POST" && path === "/completejob") {
       jobCompleted = true;
       console.log("[job] Job completed!");
       return Response.json({});
     }
 
-    // --- Feedback endpoints (timelines, logs, etc.) ---
+    // --- Action resolution ---
+    // POST /actions/build/{planId}/jobs/{jobId}/runnerresolve/actions
+    if (method === "POST" && path.includes("/runnerresolve/actions")) {
+      const body = (await req.json()) as any;
+      const actions = (body.actions || []).map((a: any) => ({
+        action: a.action || a.name,
+        version: a.version || a.ref,
+        path: a.path || "",
+      }));
+      const resolved = await resolveActions(actions);
+      return Response.json({ actions: resolved });
+    }
 
-    // Create/get timeline
+    // --- Feedback endpoints ---
+
     if (path.includes("/timelines")) {
       if (method === "POST") {
-        console.log("[timeline] Timeline created");
         return Response.json({ id: TIMELINE_ID, changeId: 1, records: [] });
       }
       if (method === "PATCH") {
-        // Update timeline records - this is where step status comes through
         req.json().then((body: any) => {
-          if (Array.isArray(body.value || body)) {
-            for (const record of body.value || body) {
+          const records = body.value || body;
+          if (Array.isArray(records)) {
+            for (const record of records) {
               if (record.name && record.state !== undefined) {
                 const states = ["Pending", "InProgress", "Completed"];
                 const results = [
@@ -287,7 +433,7 @@ Bun.serve({
                 ];
                 const state = states[record.state] || record.state;
                 const result =
-                  record.result !== null && record.result !== undefined
+                  record.result != null
                     ? results[record.result] || record.result
                     : "";
                 console.log(
@@ -297,59 +443,41 @@ Bun.serve({
             }
           }
         });
-        return Response.json({
-          changeId: 2,
-          records: [],
-        });
+        return Response.json({ changeId: 2, records: [] });
       }
       if (method === "GET") {
         return Response.json({ id: TIMELINE_ID, changeId: 1, records: [] });
       }
     }
 
-    // Create/append logs
     if (path.includes("/logs")) {
       if (method === "POST" && !path.match(/\/logs\/\d+/)) {
-        // Create log
         return Response.json({ id: 1, path: "logs/1" });
       }
       if (method === "POST" && path.match(/\/logs\/\d+/)) {
-        // Append log lines
         req.text().then((text) => {
-          if (text.trim()) {
-            for (const line of text.split("\n")) {
-              if (line.trim()) console.log(`  [log] ${line.trim()}`);
-            }
+          for (const line of text.split("\n")) {
+            if (line.trim()) console.log(`  [log] ${line.trim()}`);
           }
         });
         return Response.json({ id: 1, path: "logs/1" });
       }
     }
 
-    // Live console feed
     if (path.includes("/feed")) {
       req.text().then((text) => {
-        if (text.trim()) {
-          for (const line of text.split("\n")) {
-            if (line.trim()) console.log(`  [feed] ${line.trim()}`);
-          }
+        for (const line of text.split("\n")) {
+          if (line.trim()) console.log(`  [feed] ${line.trim()}`);
         }
       });
       return Response.json({});
     }
 
-    // Plan events (JobStarted, JobCompleted)
     if (path.includes("/events")) {
       req.json().then((body: any) => {
         console.log(`[event] ${body.name || "unknown"}`);
       });
       return Response.json({});
-    }
-
-    // Action resolution
-    if (path.includes("/actions")) {
-      console.log("[actions] Action resolution request (not implemented)");
-      return Response.json({ actions: {} });
     }
 
     // Catch-all
