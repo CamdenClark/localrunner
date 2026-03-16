@@ -29,14 +29,14 @@ async function getCurrentBranch(): Promise<string> {
 
 function repoPayload(ctx: RepoContext) {
   return {
-    id: 1,
+    id: Number(ctx.repositoryId),
     name: ctx.repo,
     full_name: ctx.fullName,
     owner: {
       login: ctx.owner,
-      id: 1,
+      id: Number(ctx.repositoryOwnerId),
     },
-    html_url: `https://github.com/${ctx.fullName}`,
+    html_url: `${ctx.serverUrl}/${ctx.fullName}`,
     default_branch: ctx.defaultBranch,
     private: false,
   };
@@ -44,8 +44,8 @@ function repoPayload(ctx: RepoContext) {
 
 function senderPayload(ctx: RepoContext) {
   return {
-    login: ctx.owner,
-    id: 1,
+    login: ctx.actor,
+    id: Number(ctx.actorId),
   };
 }
 
@@ -66,7 +66,7 @@ async function generatePushPayload(ctx: RepoContext): Promise<object> {
       id: ctx.sha,
       message: commitMsg,
       timestamp: new Date().toISOString(),
-      author: { name: ctx.owner, email: "", username: ctx.owner },
+      author: { name: ctx.actor, email: "", username: ctx.actor },
     },
     repository: repoPayload(ctx),
     sender: senderPayload(ctx),
@@ -94,7 +94,7 @@ async function generatePullRequestPayload(ctx: RepoContext): Promise<object> {
         repo: repoPayload(ctx),
       },
       user: senderPayload(ctx),
-      html_url: `https://github.com/${ctx.fullName}/pull/1`,
+      html_url: `${ctx.serverUrl}/${ctx.fullName}/pull/1`,
     },
     repository: repoPayload(ctx),
     sender: senderPayload(ctx),

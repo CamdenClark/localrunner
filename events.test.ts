@@ -11,6 +11,13 @@ const mockCtx: RepoContext = {
   ref: "refs/heads/main",
   remoteUrl: "https://github.com/testowner/testrepo",
   token: "test-token",
+  actor: "testuser",
+  actorId: "12345",
+  repositoryId: "67890",
+  repositoryOwnerId: "11111",
+  serverUrl: "https://github.com",
+  apiUrl: "https://api.github.com",
+  graphqlUrl: "https://api.github.com/graphql",
 };
 
 describe("generateEventPayload", () => {
@@ -19,7 +26,7 @@ describe("generateEventPayload", () => {
     expect(payload.ref).toBe("refs/heads/main");
     expect(payload.after).toBe("abc123def456");
     expect(payload.repository.full_name).toBe("testowner/testrepo");
-    expect(payload.sender.login).toBe("testowner");
+    expect(payload.sender.login).toBe("testuser");
     expect(payload.head_commit).toBeDefined();
     expect(payload.head_commit.id).toBe("abc123def456");
   });
@@ -43,7 +50,7 @@ describe("generateEventPayload", () => {
   test("generates minimal payload for unknown events", async () => {
     const payload = (await generateEventPayload("release", mockCtx)) as any;
     expect(payload.repository.full_name).toBe("testowner/testrepo");
-    expect(payload.sender.login).toBe("testowner");
+    expect(payload.sender.login).toBe("testuser");
   });
 
   test("merges overrides into payload", async () => {

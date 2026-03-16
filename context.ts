@@ -9,25 +9,57 @@ export interface RepoContext {
   ref: string;
   remoteUrl: string;
   token: string;
+  actor: string;
+  actorId: string;
+  repositoryId: string;
+  repositoryOwnerId: string;
+  serverUrl: string;
+  apiUrl: string;
+  graphqlUrl: string;
 }
 
 export async function getRepoContext(): Promise<RepoContext> {
-  const [repoJson, sha, ref, token] = await Promise.all([
+  // Parse owner/repo from git remote so we can fire all API calls in parallel
+  const remoteUrl = (await $`git remote get-url origin`.text()).trim();
+  const match = remoteUrl.match(/[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
+  if (!match) throw new Error(`Could not parse owner/repo from remote URL: ${remoteUrl}`);
+  const [, remoteOwner, remoteRepo] = match;
+
+  const [repoJson, sha, ref, token, userJson, repoApiData] = await Promise.all([
     $`gh repo view --json owner,name,defaultBranchRef,url`.json(),
     $`git rev-parse HEAD`.text(),
     $`git symbolic-ref HEAD`.text().catch(() => "refs/heads/main"),
     $`gh auth token`.text(),
+    $`gh api user`.json() as Promise<{ login: string; id: number }>,
+    // REST API for numeric IDs (GraphQL only exposes node IDs)
+    $`gh api repos/${remoteOwner}/${remoteRepo}`.json() as Promise<{ id: number; owner: { id: number } }>,
   ]);
+
+  const fullName = `${repoJson.owner.login}/${repoJson.name}`;
+
+  // Derive GitHub instance URLs from the repo URL (supports GHES)
+  const repoUrl = new URL(repoJson.url);
+  const isGHES = repoUrl.hostname !== "github.com";
+  const serverUrl = `${repoUrl.protocol}//${repoUrl.host}`;
+  const apiUrl = isGHES ? `${serverUrl}/api/v3` : "https://api.github.com";
+  const graphqlUrl = isGHES ? `${serverUrl}/api/graphql` : "https://api.github.com/graphql";
 
   return {
     owner: repoJson.owner.login,
     repo: repoJson.name,
-    fullName: `${repoJson.owner.login}/${repoJson.name}`,
+    fullName,
     defaultBranch: repoJson.defaultBranchRef?.name || "main",
     sha: sha.trim(),
     ref: ref.trim(),
     remoteUrl: repoJson.url,
     token: token.trim(),
+    actor: userJson.login,
+    actorId: String(userJson.id),
+    repositoryId: String(repoApiData.id),
+    repositoryOwnerId: String(repoApiData.owner.id),
+    serverUrl,
+    apiUrl,
+    graphqlUrl,
   };
 }
 
@@ -70,19 +102,19 @@ export function buildGitHubContextData(
       { k: "run_id", v: "1" },
       { k: "run_number", v: "1" },
       { k: "run_attempt", v: "1" },
-      { k: "actor", v: ctx.owner },
-      { k: "triggering_actor", v: ctx.owner },
+      { k: "actor", v: ctx.actor },
+      { k: "triggering_actor", v: ctx.actor },
       { k: "event", v: serializeEventPayload(eventPayload) },
-      { k: "server_url", v: "https://github.com" },
-      { k: "api_url", v: "https://api.github.com" },
-      { k: "graphql_url", v: "https://api.github.com/graphql" },
+      { k: "server_url", v: ctx.serverUrl },
+      { k: "api_url", v: ctx.apiUrl },
+      { k: "graphql_url", v: ctx.graphqlUrl },
       { k: "workspace", v: "" },
       { k: "action", v: "" },
       { k: "token", v: ctx.token },
-      { k: "repositoryUrl", v: `https://github.com/${ctx.fullName}` },
+      { k: "repositoryUrl", v: `${ctx.serverUrl}/${ctx.fullName}` },
       { k: "retention_days", v: "90" },
-      { k: "repository_id", v: "1" },
-      { k: "repository_owner_id", v: "1" },
+      { k: "repository_id", v: ctx.repositoryId },
+      { k: "repository_owner_id", v: ctx.repositoryOwnerId },
       { k: "action_path", v: "" },
       { k: "action_ref", v: "" },
       { k: "action_repository", v: "" },

@@ -6,6 +6,7 @@ import { parseWorkflow, matchesEvent, workflowStepsToRunnerSteps } from "./workf
 import { generateEventPayload } from "./events";
 import { scriptStep, actionStep } from "./server";
 import { startRun } from "./orchestrator";
+import { buildExpressionContext, evaluateExpressions } from "./expressions";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -163,15 +164,26 @@ async function main() {
     return process.exit(1);
   }
 
-  // Convert steps
-  const jobSteps = workflowStepsToRunnerSteps(selectedJob.steps, scriptStep, actionStep);
-  console.log(`Steps: ${jobSteps.length}\n`);
-
   // Get repo context and generate event payload
   const repoCtx = await getRepoContext();
   console.log(`Repo: ${repoCtx.fullName} (${repoCtx.sha.slice(0, 8)})\n`);
 
   const eventPayload = await generateEventPayload(eventName, repoCtx, payloadOverrides);
+
+  // Build expression context and convert steps (evaluating ${{ }} expressions)
+  const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName);
+
+  const jobSteps = workflowStepsToRunnerSteps(
+    selectedJob.steps,
+    (script, displayName) => scriptStep(evaluateExpressions(script, exprCtx), displayName),
+    (action, ref, displayName, inputs) => {
+      const evaluated = inputs
+        ? Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
+        : undefined;
+      return actionStep(action, ref, displayName, evaluated);
+    },
+  );
+  console.log(`Steps: ${jobSteps.length}\n`);
 
   // Resolve runner directory
   const runnerDir = resolve(import.meta.dir, "runner");

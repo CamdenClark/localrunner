@@ -73,6 +73,7 @@ export function actionStep(
 async function resolveActions(
   actions: { action: string; version: string; path: string }[],
   token: string,
+  apiUrl: string,
 ): Promise<Record<string, object>> {
   const result: Record<string, object> = {};
 
@@ -82,7 +83,7 @@ async function resolveActions(
 
     try {
       const refRes = await fetch(
-        `https://api.github.com/repos/${action}/git/ref/tags/${version}`,
+        `${apiUrl}/repos/${action}/git/ref/tags/${version}`,
         {
           headers: {
             Accept: "application/vnd.github.v3+json",
@@ -112,7 +113,7 @@ async function resolveActions(
         }
       } else {
         const branchRes = await fetch(
-          `https://api.github.com/repos/${action}/git/ref/heads/${version}`,
+          `${apiUrl}/repos/${action}/git/ref/heads/${version}`,
           {
             headers: {
               Accept: "application/vnd.github.v3+json",
@@ -133,8 +134,8 @@ async function resolveActions(
         name: action,
         resolved_name: action,
         resolved_sha: sha,
-        tar_url: `https://api.github.com/repos/${action}/tarball/${sha}`,
-        zip_url: `https://api.github.com/repos/${action}/zipball/${sha}`,
+        tar_url: `${apiUrl}/repos/${action}/tarball/${sha}`,
+        zip_url: `${apiUrl}/repos/${action}/zipball/${sha}`,
         version: version,
         authentication: {
           token,
@@ -147,8 +148,8 @@ async function resolveActions(
         name: action,
         resolved_name: action,
         resolved_sha: version,
-        tar_url: `https://api.github.com/repos/${action}/tarball/${version}`,
-        zip_url: `https://api.github.com/repos/${action}/zipball/${version}`,
+        tar_url: `${apiUrl}/repos/${action}/tarball/${version}`,
+        zip_url: `${apiUrl}/repos/${action}/zipball/${version}`,
         version: version,
         authentication: {
           token,
@@ -266,7 +267,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             properties: {
               id: "github",
               type: "GitHub",
-              url: `https://github.com/${repoCtx.fullName}`,
+              url: `${repoCtx.serverUrl}/${repoCtx.fullName}`,
               version: repoCtx.ref,
             },
           },
@@ -390,7 +391,17 @@ export function createServer(config: ServerConfig): ServerHandle {
 
       if (method === "POST" && path === "/completejob") {
         jobDone = true;
-        console.log("[job] Job completed!");
+        const body = await req.json() as any;
+        const conclusion = body.conclusion || "unknown";
+        console.log(`[job] Job completed (${conclusion})`);
+        if (body.stepResults) {
+          for (const step of body.stepResults) {
+            if (step.name && step.conclusion) {
+              const icon = step.conclusion === "succeeded" ? "✓" : step.conclusion === "skipped" ? "○" : "✗";
+              console.log(`  ${icon} ${step.name}: ${step.conclusion}`);
+            }
+          }
+        }
         resolveJobCompleted!();
         return Response.json({});
       }
@@ -402,7 +413,7 @@ export function createServer(config: ServerConfig): ServerHandle {
           version: a.version || a.ref,
           path: a.path || "",
         }));
-        const resolved = await resolveActions(actions, repoCtx.token);
+        const resolved = await resolveActions(actions, repoCtx.token, repoCtx.apiUrl);
         return Response.json({ actions: resolved });
       }
 
