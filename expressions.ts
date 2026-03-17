@@ -8,6 +8,8 @@ export function buildExpressionContext(
   workflowName: string,
   jobName: string,
   stepEnv?: Record<string, string>,
+  secrets?: Record<string, string>,
+  variables?: Record<string, string>,
 ): Record<string, string> {
   const ctx: Record<string, string> = {};
 
@@ -65,6 +67,20 @@ export function buildExpressionContext(
   if (stepEnv) {
     for (const [k, v] of Object.entries(stepEnv)) {
       ctx[`env.${k}`] = v;
+    }
+  }
+
+  // secrets context
+  if (secrets) {
+    for (const [k, v] of Object.entries(secrets)) {
+      ctx[`secrets.${k}`] = v;
+    }
+  }
+
+  // vars context
+  if (variables) {
+    for (const [k, v] of Object.entries(variables)) {
+      ctx[`vars.${k}`] = v;
     }
   }
 

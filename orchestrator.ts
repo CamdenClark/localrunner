@@ -11,6 +11,8 @@ export interface RunConfig {
   workflowName: string;
   jobName: string;
   runnerDir: string;
+  secrets?: Record<string, string>;
+  variables?: Record<string, string>;
 }
 
 function buildJitConfig(port: number): string {
@@ -42,7 +44,7 @@ function buildJitConfig(port: number): string {
 }
 
 export async function startRun(config: RunConfig): Promise<void> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables } = config;
 
   // Write event.json to a temp directory for the runner
   const tmpDir = join(tmpdir(), `localrunner-${Date.now()}`);
@@ -57,6 +59,8 @@ export async function startRun(config: RunConfig): Promise<void> {
     eventPayload,
     workflowName,
     jobName,
+    secrets,
+    variables,
   });
 
   const jitconfig = buildJitConfig(port);

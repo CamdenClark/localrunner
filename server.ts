@@ -10,6 +10,8 @@ export interface ServerConfig {
   eventPayload: object;
   workflowName: string;
   jobName: string;
+  secrets?: Record<string, string>;
+  variables?: Record<string, string>;
 }
 
 export interface ServerHandle {
@@ -165,7 +167,7 @@ async function resolveActions(
 // --- Server factory ---
 
 export function createServer(config: ServerConfig): ServerHandle {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, secrets, variables } = config;
 
   const SESSION_ID = randomUUID();
   const PLAN_ID = randomUUID();
@@ -298,8 +300,16 @@ export function createServer(config: ServerConfig): ServerHandle {
         "system.github.launch_endpoint": {
           value: `http://localhost:${port}`,
         },
+        ...Object.fromEntries(
+          Object.entries(secrets || {}).map(([k, v]) => [`secrets.${k}`, { value: v, isSecret: true }]),
+        ),
+        ...Object.fromEntries(
+          Object.entries(variables || {}).map(([k, v]) => [`vars.${k}`, { value: v }]),
+        ),
       },
-      mask: [],
+      mask: [
+        ...Object.values(secrets || {}).filter((v) => v.length > 0).map((v) => ({ type: "regex", value: v })),
+      ],
       steps,
       workspace: { clean: null },
       fileTable: [],

@@ -274,6 +274,34 @@ describe("buildExpressionContext", () => {
     expect(Object.keys(ctx).filter((k) => k.startsWith("env."))).toEqual([]);
   });
 
+  test("includes secrets in context", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "job", undefined, {
+      MY_SECRET: "s3cret",
+      GITHUB_TOKEN: "ghp_abc",
+    });
+    expect(ctx["secrets.MY_SECRET"]).toBe("s3cret");
+    expect(ctx["secrets.GITHUB_TOKEN"]).toBe("ghp_abc");
+  });
+
+  test("includes variables in context", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "job", undefined, undefined, {
+      MY_VAR: "hello",
+      DEPLOY_ENV: "staging",
+    });
+    expect(ctx["vars.MY_VAR"]).toBe("hello");
+    expect(ctx["vars.DEPLOY_ENV"]).toBe("staging");
+  });
+
+  test("omits secrets context when undefined", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "job");
+    expect(Object.keys(ctx).filter((k) => k.startsWith("secrets."))).toEqual([]);
+  });
+
+  test("omits vars context when undefined", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "job");
+    expect(Object.keys(ctx).filter((k) => k.startsWith("vars."))).toEqual([]);
+  });
+
   test("handles null values in event payload", () => {
     const payload = { some_field: null, other_field: "value" };
     const ctx = buildExpressionContext(mockCtx, "push", payload, "wf", "job");
@@ -364,5 +392,21 @@ describe("expression evaluation integration", () => {
     const input =
       "node " + expr("env.NODE_VERSION") + " on " + expr("runner.os");
     expect(evaluateExpressions(input, ctx)).toBe("node 20 on macOS");
+  });
+
+  test("evaluates secrets expressions", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "CI", "test", undefined, {
+      NPM_TOKEN: "npm_abc123",
+    });
+    const input = "echo " + expr("secrets.NPM_TOKEN");
+    expect(evaluateExpressions(input, ctx)).toBe("echo npm_abc123");
+  });
+
+  test("evaluates vars expressions", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "CI", "test", undefined, undefined, {
+      DEPLOY_ENV: "production",
+    });
+    const input = "deploy to " + expr("vars.DEPLOY_ENV");
+    expect(evaluateExpressions(input, ctx)).toBe("deploy to production");
   });
 });
