@@ -285,6 +285,10 @@ async function main() {
         return actionStep(action, ref, displayName, evaluated);
       },
     );
+    const serviceNames = selectedJob.services ? Object.keys(selectedJob.services) : [];
+    if (serviceNames.length > 0) {
+      console.log(`Services: ${serviceNames.join(", ")}`);
+    }
     console.log(`Steps: ${jobSteps.length}\n`);
 
     const conclusion = await startRun({
@@ -299,6 +303,7 @@ async function main() {
       secrets,
       variables,
       dockerImage,
+      services: selectedJob.services,
     });
 
     if (conclusion !== "succeeded") {

@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1]
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -21,4 +21,5 @@ jobs:
         run: bun test acceptance/
         env:
           SHARD_INDEX: ${{ matrix.shard }}
-          SHARD_TOTAL: 2
+          SHARD_TOTAL: 3
+          GH_TOKEN: ${{ github.token }}

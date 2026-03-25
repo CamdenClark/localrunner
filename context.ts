@@ -25,38 +25,50 @@ export async function getRepoContext(): Promise<RepoContext> {
   if (!match) throw new Error(`Could not parse owner/repo from remote URL: ${remoteUrl}`);
   const [, remoteOwner, remoteRepo] = match;
 
-  const [repoJson, sha, ref, token, userJson, repoApiData] = await Promise.all([
-    $`gh repo view --json owner,name,defaultBranchRef,url`.json(),
+  const [sha, ref, token] = await Promise.all([
     $`git rev-parse HEAD`.text(),
     $`git symbolic-ref HEAD`.text().catch(() => "refs/heads/main"),
-    $`gh auth token`.text(),
-    $`gh api user`.json() as Promise<{ login: string; id: number }>,
-    // REST API for numeric IDs (GraphQL only exposes node IDs)
-    $`gh api repos/${remoteOwner}/${remoteRepo}`.json() as Promise<{ id: number; owner: { id: number } }>,
+    $`gh auth token`.text().catch(() => ""),
   ]);
 
-  const fullName = `${repoJson.owner.login}/${repoJson.name}`;
+  // Try GitHub API calls, but fall back gracefully for repos that don't exist on GitHub
+  let repoJson: { owner: { login: string }; name: string; defaultBranchRef?: { name: string }; url: string } | null = null;
+  let userJson: { login: string; id: number } | null = null;
+  let repoApiData: { id: number; owner: { id: number } } | null = null;
 
-  // Derive GitHub instance URLs from the repo URL (supports GHES)
-  const repoUrl = new URL(repoJson.url);
+  try {
+    [repoJson, userJson, repoApiData] = await Promise.all([
+      $`gh repo view ${remoteOwner}/${remoteRepo} --json owner,name,defaultBranchRef,url`.json(),
+      $`gh api user`.json() as Promise<{ login: string; id: number }>,
+      $`gh api repos/${remoteOwner}/${remoteRepo}`.json() as Promise<{ id: number; owner: { id: number } }>,
+    ]);
+  } catch {
+    // GitHub API unavailable or repo doesn't exist — use local git info
+  }
+
+  const fullName = repoJson
+    ? `${repoJson.owner.login}/${repoJson.name}`
+    : `${remoteOwner}/${remoteRepo}`;
+
+  const repoUrl = repoJson ? new URL(repoJson.url) : new URL(`https://github.com/${remoteOwner}/${remoteRepo}`);
   const isGHES = repoUrl.hostname !== "github.com";
   const serverUrl = `${repoUrl.protocol}//${repoUrl.host}`;
   const apiUrl = isGHES ? `${serverUrl}/api/v3` : "https://api.github.com";
   const graphqlUrl = isGHES ? `${serverUrl}/api/graphql` : "https://api.github.com/graphql";
 
   return {
-    owner: repoJson.owner.login,
-    repo: repoJson.name,
+    owner: repoJson?.owner.login || remoteOwner!,
+    repo: repoJson?.name || remoteRepo!,
     fullName,
-    defaultBranch: repoJson.defaultBranchRef?.name || "main",
+    defaultBranch: repoJson?.defaultBranchRef?.name || "main",
     sha: sha.trim(),
     ref: ref.trim(),
-    remoteUrl: repoJson.url,
+    remoteUrl: repoJson?.url || remoteUrl,
     token: token.trim(),
-    actor: userJson.login,
-    actorId: String(userJson.id),
-    repositoryId: String(repoApiData.id),
-    repositoryOwnerId: String(repoApiData.owner.id),
+    actor: userJson?.login || remoteOwner!,
+    actorId: userJson ? String(userJson.id) : "0",
+    repositoryId: repoApiData ? String(repoApiData.id) : "0",
+    repositoryOwnerId: repoApiData ? String(repoApiData.owner.id) : "0",
     serverUrl,
     apiUrl,
     graphqlUrl,

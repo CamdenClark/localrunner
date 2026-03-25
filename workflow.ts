@@ -33,7 +33,9 @@ const ServiceSchema = z.object({
   ports: z.array(z.union([z.string(), z.number()])).optional(),
   volumes: z.array(z.string()).optional(),
   options: z.string().optional(),
-}).optional();
+});
+
+export type Service = z.infer<typeof ServiceSchema>;
 
 const ContainerSchema = z.union([
   z.string(),
@@ -57,7 +59,7 @@ const JobSchema = z.object({
   if: z.string().optional(),
   needs: z.union([z.string(), z.array(z.string())]).optional(),
   strategy: StrategySchema,
-  services: z.record(z.any()).optional(),
+  services: z.record(ServiceSchema).optional(),
   container: ContainerSchema,
   name: z.string().optional(),
   "timeout-minutes": z.union([z.number(), z.string()]).optional(),
