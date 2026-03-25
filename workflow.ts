@@ -2,16 +2,19 @@ import { z } from "zod";
 
 // --- Zod schemas for GitHub Actions workflow YAML ---
 
+// YAML parses bare numbers/booleans as non-strings, but GitHub Actions env values are always strings
+const EnvSchema = z.record(z.union([z.string(), z.number(), z.boolean()]).transform(String));
+
 const StepSchema = z.object({
   uses: z.string().optional(),
   run: z.string().optional(),
   name: z.string().optional(),
   with: z.record(z.any()).optional(),
-  env: z.record(z.string()).optional(),
+  env: EnvSchema.optional(),
   if: z.string().optional(),
   id: z.string().optional(),
   "continue-on-error": z.union([z.boolean(), z.string()]).optional(),
-  "timeout-minutes": z.number().optional(),
+  "timeout-minutes": z.union([z.number(), z.string()]).optional(),
   "working-directory": z.string().optional(),
   shell: z.string().optional(),
 });
@@ -26,7 +29,7 @@ const StrategySchema = z.object({
 
 const ServiceSchema = z.object({
   image: z.string(),
-  env: z.record(z.string()).optional(),
+  env: EnvSchema.optional(),
   ports: z.array(z.union([z.string(), z.number()])).optional(),
   volumes: z.array(z.string()).optional(),
   options: z.string().optional(),
@@ -36,7 +39,7 @@ const ContainerSchema = z.union([
   z.string(),
   z.object({
     image: z.string(),
-    env: z.record(z.string()).optional(),
+    env: EnvSchema.optional(),
     ports: z.array(z.union([z.string(), z.number()])).optional(),
     volumes: z.array(z.string()).optional(),
     options: z.string().optional(),
@@ -50,14 +53,14 @@ const ContainerSchema = z.union([
 const JobSchema = z.object({
   "runs-on": z.union([z.string(), z.array(z.string())]).optional(),
   steps: z.array(StepSchema).optional(),
-  env: z.record(z.string()).optional(),
+  env: EnvSchema.optional(),
   if: z.string().optional(),
   needs: z.union([z.string(), z.array(z.string())]).optional(),
   strategy: StrategySchema,
   services: z.record(z.any()).optional(),
   container: ContainerSchema,
   name: z.string().optional(),
-  "timeout-minutes": z.number().optional(),
+  "timeout-minutes": z.union([z.number(), z.string()]).optional(),
   outputs: z.record(z.string()).optional(),
   permissions: z.any().optional(),
   concurrency: z.any().optional(),
@@ -93,7 +96,7 @@ const OnSchema = z.union([
 const WorkflowSchema = z.object({
   name: z.string().optional(),
   on: OnSchema,
-  env: z.record(z.string()).optional(),
+  env: EnvSchema.optional(),
   jobs: z.record(JobSchema),
   permissions: z.any().optional(),
   concurrency: z.any().optional(),
