@@ -22,7 +22,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/localrunner
 
 jobs:
   build:
@@ -39,6 +38,9 @@ jobs:
             version: "2204"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set image name
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository_owner }}/localrunner' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Setup Packer
         uses: hashicorp/setup-packer@main
