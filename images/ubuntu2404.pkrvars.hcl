@@ -1,0 +1,5 @@
+base_image        = "ubuntu:24.04"
+image_family      = "localrunner-ubuntu2404-x64"
+image_description = "localrunner image based on Ubuntu 24.04 LTS x64"
+image_os          = "ubuntu24"
+toolset_file      = "toolsets/toolset-2404.json"

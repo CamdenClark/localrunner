@@ -1,0 +1,67 @@
+name: Build Runner Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "images/**"
+  workflow_dispatch:
+    inputs:
+      ubuntu_version:
+        description: "Ubuntu version to build (blank = both)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - "2404"
+          - "2204"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/localrunner
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - varfile: ubuntu2404.pkrvars.hcl
+            os: ubuntu24
+            version: "2404"
+          - varfile: ubuntu2204.pkrvars.hcl
+            os: ubuntu22
+            version: "2204"
+    # Skip if workflow_dispatch specifies a different version
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.ubuntu_version == '' ||
+      github.event.inputs.ubuntu_version == matrix.version
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: latest
+
+      - name: Initialize Packer
+        working-directory: images
+        run: packer init .
+
+      - name: Build image
+        working-directory: images
+        run: |
+          packer build \
+            -var-file=${{ matrix.varfile }} \
+            -var "docker_repository=${REGISTRY}/${IMAGE_NAME}" \
+            -var "docker_push=true" \
+            -var "docker_login_server=${REGISTRY}" \
+            -var "docker_login_username=${{ github.actor }}" \
+            -var "docker_login_password=${{ secrets.GITHUB_TOKEN }}" \
+            .
