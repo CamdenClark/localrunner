@@ -12,6 +12,9 @@ export interface ServerConfig {
   jobName: string;
   secrets?: Record<string, string>;
   variables?: Record<string, string>;
+  hostAddress?: string;
+  runnerOs?: string;
+  runnerArch?: string;
 }
 
 export interface ServerHandle {
@@ -168,6 +171,10 @@ async function resolveActions(
 
 export function createServer(config: ServerConfig): ServerHandle {
   const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, secrets, variables } = config;
+  const hostAddress = config.hostAddress || "localhost";
+  const serverBaseUrl = `http://${hostAddress}:${port}`;
+  const runnerOs = config.runnerOs || "macOS";
+  const runnerArch = config.runnerArch || "ARM64";
 
   const SESSION_ID = randomUUID();
   const PLAN_ID = randomUUID();
@@ -216,7 +223,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         accessMappings: [
           {
             moniker: "HostGuidAccessMapping",
-            accessPoint: `http://localhost:${port}/`,
+            accessPoint: `${serverBaseUrl}/`,
             displayName: "Host Guid Access Mapping",
           },
         ],
@@ -252,7 +259,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             id: randomUUID(),
             name: "SystemVssConnection",
             type: "ExternalConnection",
-            url: `http://localhost:${port}/`,
+            url: `${serverBaseUrl}/`,
             authorization: {
               scheme: "OAuth",
               parameters: { AccessToken: LOCAL_JWT },
@@ -283,8 +290,8 @@ export function createServer(config: ServerConfig): ServerHandle {
         runner: {
           t: 2,
           d: [
-            { k: "os", v: "macOS" },
-            { k: "arch", v: "ARM64" },
+            { k: "os", v: runnerOs },
+            { k: "arch", v: runnerArch },
             { k: "name", v: "local-runner" },
             { k: "tool_cache", v: "" },
             { k: "temp", v: "/tmp" },
@@ -298,7 +305,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         "system.github.token": { value: repoCtx.token, isSecret: true },
         "system.github.job": { value: jobName.replace(/[^a-zA-Z0-9_]/g, "_") },
         "system.github.launch_endpoint": {
-          value: `http://localhost:${port}`,
+          value: serverBaseUrl,
         },
         ...Object.fromEntries(
           Object.entries(secrets || {}).map(([k, v]) => [`secrets.${k}`, { value: v, isSecret: true }]),
@@ -370,7 +377,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             body: JSON.stringify({
               id: "msg-1",
               runner_request_id: "req-1",
-              run_service_url: `http://localhost:${port}`,
+              run_service_url: serverBaseUrl,
               should_acknowledge: false,
               billing_owner_id: "",
             }),

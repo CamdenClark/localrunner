@@ -22,6 +22,9 @@ const { values, positionals } = parseArgs({
     "var-file": { type: "string" },
     eventpath: { type: "string", short: "e" },
     list: { type: "boolean", short: "l" },
+    local: { type: "boolean" },
+    image: { type: "string" },
+    platform: { type: "string", short: "P", multiple: true },
     port: { type: "string", default: "9637" },
     help: { type: "boolean", short: "h" },
   },
@@ -44,6 +47,9 @@ Flags:
   --var-file <path>          Path to .env-style vars file (default: .vars)
   -e, --eventpath <path>    Path to event payload JSON file
   -l, --list                List matching workflows and exit
+  --local                    Run with local runner instead of Docker (default: Docker)
+  --image <name>             Docker image override for all jobs
+  -P, --platform <label=img> Map runs-on label to Docker image (e.g. -P ubuntu-latest=myimage:tag)
   --port <number>            Server port (default: 9637)
   -h, --help                Show this help message
 
@@ -172,6 +178,31 @@ async function main() {
 
   const runnerDir = resolve(import.meta.dir, "runner");
 
+  const DEFAULT_IMAGES: Record<string, string> = {
+    "ubuntu-latest": "ghcr.io/camdenclark/localrunner:ubuntu24",
+    "ubuntu-24.04": "ghcr.io/camdenclark/localrunner:ubuntu24",
+    "ubuntu-22.04": "ghcr.io/camdenclark/localrunner:ubuntu22",
+  };
+
+  // Parse --platform overrides (e.g. -P ubuntu-latest=myimage:tag)
+  const platformOverrides: Record<string, string> = {};
+  for (const p of values.platform || []) {
+    const eq = p.indexOf("=");
+    if (eq === -1) {
+      console.error(`Error: invalid --platform format '${p}', expected label=image`);
+      process.exit(1);
+    }
+    platformOverrides[p.slice(0, eq)] = p.slice(eq + 1);
+  }
+
+  function resolveDockerImage(runsOn: string | string[] | undefined): string | undefined {
+    if (values.local) return undefined;
+    if (values.image) return values.image;
+    const label = Array.isArray(runsOn) ? runsOn[0] : runsOn;
+    const key = label || "ubuntu-latest";
+    return platformOverrides[key] || DEFAULT_IMAGES[key] || DEFAULT_IMAGES["ubuntu-latest"];
+  }
+
   for (const match of workflowMatches) {
     const { workflow, path: workflowPath, yamlText } = match;
     const workflowName = workflow.name || basename(workflowPath, ".yml");
@@ -206,7 +237,8 @@ async function main() {
     }
 
     const selectedJob = workflow.jobs[selectedJobName]!;
-    console.log(`Job: ${selectedJobName}`);
+    const dockerImage = resolveDockerImage(selectedJob["runs-on"]);
+    console.log(`Job: ${selectedJobName}${dockerImage ? ` (${selectedJob["runs-on"] || "ubuntu-latest"} → ${dockerImage})` : " (local)"}`);
 
     if (!selectedJob.steps || selectedJob.steps.length === 0) {
       console.error(`Error: job '${selectedJobName}' has no steps`);
@@ -264,6 +296,7 @@ async function main() {
       runnerDir,
       secrets,
       variables,
+      dockerImage,
     });
 
     console.log();
