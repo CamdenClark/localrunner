@@ -147,12 +147,19 @@ build {
   }
 
   ###########################################################################
-  # Tag the image
+  # Tag and push the image
   ###########################################################################
   post-processors {
     post-processor "docker-tag" {
       repository = var.docker_repository
-      tags       = [var.image_os, "${var.image_os}-${local.timestamp}", "latest"]
+      tags       = [var.image_os, "${var.image_os}-${local.timestamp}"]
+    }
+
+    post-processor "docker-push" {
+      login          = var.docker_push
+      login_server   = var.docker_login_server
+      login_username = var.docker_login_username
+      login_password = var.docker_login_password
     }
   }
 }

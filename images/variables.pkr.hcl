@@ -17,7 +17,32 @@ variable "image_description" {
 variable "docker_repository" {
   type        = string
   default     = "localrunner"
-  description = "Docker repository name for tagging"
+  description = "Docker repository name for tagging (e.g. ghcr.io/owner/repo)"
+}
+
+variable "docker_push" {
+  type        = bool
+  default     = false
+  description = "Whether to push the image after tagging"
+}
+
+variable "docker_login_server" {
+  type        = string
+  default     = ""
+  description = "Docker registry login server (e.g. ghcr.io)"
+}
+
+variable "docker_login_username" {
+  type        = string
+  default     = ""
+  description = "Docker registry login username"
+}
+
+variable "docker_login_password" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Docker registry login password/token"
 }
 
 variable "runner_version" {
