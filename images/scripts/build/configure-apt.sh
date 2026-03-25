@@ -1,0 +1,32 @@
+#!/bin/bash -e
+################################################################################
+##  File:  configure-apt.sh
+##  Desc:  Configure apt, install jq (adapted for Docker - no systemd)
+##  From:  actions/runner-images (MIT License)
+################################################################################
+
+source $HELPER_SCRIPTS/os.sh
+
+# Enable retry logic for apt up to 10 times
+echo "APT::Acquire::Retries \"10\";" > /etc/apt/apt.conf.d/80-retries
+
+# Configure apt to always assume Y
+echo "APT::Get::Assume-Yes \"true\";" > /etc/apt/apt.conf.d/90assumeyes
+
+# Always include phased updates
+echo 'APT::Get::Always-Include-Phased-Updates "true";' > /etc/apt/apt.conf.d/99-phased-updates
+
+# Fix bad proxy and http headers settings
+cat <<EOF >> /etc/apt/apt.conf.d/99bad_proxy
+Acquire::http::Pipeline-Depth 0;
+Acquire::http::No-Cache true;
+Acquire::https::Pipeline-Depth 0;
+Acquire::https::No-Cache true;
+Acquire::BrokenProxy    true;
+EOF
+
+# Uninstall unattended-upgrades
+apt-get purge unattended-upgrades || true
+
+apt-get update
+apt-get install jq
