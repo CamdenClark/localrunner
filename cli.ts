@@ -203,6 +203,8 @@ async function main() {
     return platformOverrides[key] || DEFAULT_IMAGES[key] || DEFAULT_IMAGES["ubuntu-latest"];
   }
 
+  let anyFailed = false;
+
   for (const match of workflowMatches) {
     const { workflow, path: workflowPath, yamlText } = match;
     const workflowName = workflow.name || basename(workflowPath, ".yml");
@@ -285,7 +287,7 @@ async function main() {
     );
     console.log(`Steps: ${jobSteps.length}\n`);
 
-    await startRun({
+    const conclusion = await startRun({
       port,
       repoCtx,
       jobSteps,
@@ -299,7 +301,15 @@ async function main() {
       dockerImage,
     });
 
+    if (conclusion !== "succeeded") {
+      anyFailed = true;
+    }
+
     console.log();
+  }
+
+  if (anyFailed) {
+    process.exit(1);
   }
 }
 

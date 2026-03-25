@@ -45,7 +45,7 @@ function buildJitConfig(port: number, hostAddress: string): string {
   return Buffer.from(jitPayload).toString("base64");
 }
 
-export async function startRun(config: RunConfig): Promise<void> {
+export async function startRun(config: RunConfig): Promise<string> {
   const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, dockerImage } = config;
 
   const isDocker = !!dockerImage;
@@ -121,7 +121,10 @@ export async function startRun(config: RunConfig): Promise<void> {
   // Wait for either job completion or runner exit
   const runnerExit = proc.exited;
 
-  await Promise.race([jobCompleted, runnerExit]);
+  const conclusion = await Promise.race([
+    jobCompleted,
+    runnerExit.then(() => "failed" as string),
+  ]);
 
   // Give a moment for final logs to flush
   await new Promise((r) => setTimeout(r, 500));
@@ -144,4 +147,6 @@ export async function startRun(config: RunConfig): Promise<void> {
   } catch {
     // best effort cleanup
   }
+
+  return conclusion;
 }

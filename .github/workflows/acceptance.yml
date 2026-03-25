@@ -1,0 +1,20 @@
+name: Acceptance Tests
+on: [push, pull_request]
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - name: Install dependencies
+        run: bun install
+      - name: Pull localrunner images
+        run: |
+          docker pull ghcr.io/camdenclark/localrunner:ubuntu24 &
+          docker pull ghcr.io/camdenclark/localrunner:ubuntu22 &
+          wait
+      - name: Run acceptance tests
+        run: bun test acceptance/

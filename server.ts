@@ -19,7 +19,7 @@ export interface ServerConfig {
 
 export interface ServerHandle {
   server: ReturnType<typeof Bun.serve>;
-  jobCompleted: Promise<void>;
+  jobCompleted: Promise<string>;
 }
 
 // --- Step builders ---
@@ -184,8 +184,8 @@ export function createServer(config: ServerConfig): ServerHandle {
   let jobDispatched = false;
   let jobDone = false;
 
-  let resolveJobCompleted: () => void;
-  const jobCompleted = new Promise<void>((resolve) => {
+  let resolveJobCompleted: (conclusion: string) => void;
+  const jobCompleted = new Promise<string>((resolve) => {
     resolveJobCompleted = resolve;
   });
 
@@ -419,7 +419,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             }
           }
         }
-        resolveJobCompleted!();
+        resolveJobCompleted!(conclusion);
         return Response.json({});
       }
 
