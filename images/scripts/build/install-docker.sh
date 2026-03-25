@@ -18,8 +18,8 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o $GPG_
 echo "deb [arch=amd64 signed-by=$GPG_KEY] $REPO_URL ${os_codename} stable" > $REPO_PATH
 apt-get update
 
-# Install docker CLI and containerd (no daemon in container)
-apt-get install --no-install-recommends docker-ce-cli containerd.io
+# Install docker CLI only (no daemon in container - mount host socket at runtime)
+apt-get install --no-install-recommends docker-ce-cli
 
 # Install plugins from GitHub releases
 plugins=$(get_toolset_value '.docker.plugins[] .plugin')
