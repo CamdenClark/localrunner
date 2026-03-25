@@ -20,7 +20,7 @@ source "docker" "runner" {
     "USER runner",
     "WORKDIR /home/runner",
   ]
-  run_command = ["-d", "-i", "-t", "--name", "{{.ContainerName}}", "{{.Image}}", "/bin/bash"]
+  run_command = ["-d", "-i", "-t", "{{.Image}}", "/bin/bash"]
 }
 
 build {
