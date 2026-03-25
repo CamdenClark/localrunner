@@ -5,8 +5,11 @@
             "curl",
             "g++",
             "gcc",
+            "gnupg2",
+            "lsb-release",
             "make",
             "jq",
+            "software-properties-common",
             "tar",
             "unzip",
             "wget"
