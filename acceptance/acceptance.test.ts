@@ -7,8 +7,18 @@ import { rmSync } from "fs";
 const CLI_PATH = join(import.meta.dir, "..", "cli.ts");
 const TIMEOUT = 5 * 60 * 1000; // 5 minutes per test
 
+// Sharding support: set SHARD_INDEX and SHARD_TOTAL to split fixtures across CI runners
+const shardIndex = parseInt(process.env.SHARD_INDEX || "0", 10);
+const shardTotal = parseInt(process.env.SHARD_TOTAL || "1", 10);
+const shardedFixtures = fixtures.filter((_, i) => i % shardTotal === shardIndex);
+
+// Randomize port to avoid conflicts when running in parallel
+function randomPort(): number {
+  return 10000 + Math.floor(Math.random() * 50000);
+}
+
 describe("acceptance", () => {
-  for (const fixture of fixtures) {
+  for (const fixture of shardedFixtures) {
     test(fixture.name, async () => {
       const workDir = join(tmpdir(), `localrunner-acceptance-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
@@ -34,8 +44,9 @@ describe("acceptance", () => {
           );
         }
 
-        // Run localrunner
-        const args = ["bun", CLI_PATH, fixture.event, "-W", fixture.workflow];
+        // Run localrunner with a random port
+        const port = randomPort();
+        const args = ["bun", CLI_PATH, fixture.event, "-W", fixture.workflow, "--port", String(port)];
         if (fixture.job) {
           args.push("-j", fixture.job);
         }
@@ -55,7 +66,6 @@ describe("acceptance", () => {
           expect(proc.exitCode).not.toBe(0);
         }
       } finally {
-        // Cleanup
         try {
           rmSync(workDir, { recursive: true, force: true });
         } catch {
