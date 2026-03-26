@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- `bun test` — run all unit tests
+- `bun test` — run unit tests (default profile)
+- `bun test --config=acceptance` — run acceptance tests
 - `bun test <file>` — run a single test file (e.g. `bun test expressions.test.ts`)
 - `bun cli.ts push` — run workflows matching a `push` event
 - `bun cli.ts pull_request` — run workflows matching a `pull_request` event
@@ -61,7 +62,9 @@ Three modes: **pretty** (colored, human-friendly, default), **raw** (minimal mar
 
 ## Testing
 
-- Unit tests live alongside source files (`*.test.ts` in root)
-- Acceptance tests in `acceptance/` clone real repos and run localrunner end-to-end
-- `bunfig.toml` excludes `runner/**` from test discovery
-- Acceptance tests support sharding via `SHARD_INDEX`/`SHARD_TOTAL` env vars
+There are two test profiles configured in `bunfig.toml`:
+
+- **`bun test`** — runs **unit tests** only (`*.test.ts` in project root). This is the default profile and what you should run after making code changes.
+- **`bun test --config=acceptance`** — runs **acceptance tests** (`acceptance/`). These clone real repos and run localrunner end-to-end. Only run these when specifically asked or when testing end-to-end behavior.
+
+Unit tests live alongside source files in the project root. Acceptance tests live in `acceptance/` and support sharding via `SHARD_INDEX`/`SHARD_TOTAL` env vars.

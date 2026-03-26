@@ -1,2 +1,9 @@
 [test]
+# Default: unit tests only (excludes runner/ and acceptance/)
+pathIgnorePatterns = ["runner/**", "acceptance/**"]
+
+[test.acceptance]
+# Acceptance tests: end-to-end tests in acceptance/
+root = "acceptance"
 pathIgnorePatterns = ["runner/**"]
+timeout = 300000
