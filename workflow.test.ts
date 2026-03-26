@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { parseWorkflow, matchesEvent, normalizeOn, workflowStepsToRunnerSteps } from "./workflow";
-import { scriptStep, actionStep } from "./server";
+import { scriptStep, actionStep } from "./server/index";
 
 describe("parseWorkflow", () => {
   test("parses a basic workflow", () => {

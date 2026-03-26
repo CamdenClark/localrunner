@@ -1,0 +1,154 @@
+import { randomUUID } from "crypto";
+import { buildGitHubContextData } from "../context";
+import type { RunContext } from "./types";
+
+export function jobRoutes(ctx: RunContext) {
+  return {
+    "/message": {
+      GET: () => {
+        if (!ctx.jobDispatched) {
+          ctx.jobDispatched = true;
+          ctx.output.emit({ type: "server", tag: "message", message: "Dispatching job!" });
+          return Response.json({
+            messageId: 1,
+            messageType: "RunnerJobRequest",
+            iv: null,
+            body: JSON.stringify({
+              id: "msg-1",
+              runner_request_id: "req-1",
+              run_service_url: ctx.serverBaseUrl,
+              should_acknowledge: false,
+              billing_owner_id: "",
+            }),
+          });
+        }
+        if (ctx.jobDone) {
+          return new Response(null, { status: 200 });
+        }
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(new Response(null, { status: 200 })), 5000);
+        });
+      },
+    },
+    "/acknowledge": { POST: () => Response.json({}) },
+    "/acquirejob": {
+      POST: () => {
+        ctx.output.emit({ type: "server", tag: "job", message: "Job acquired" });
+        return Response.json(buildJobMessage(ctx));
+      },
+    },
+    "/renewjob": {
+      POST: () => Response.json({
+        lockedUntil: new Date(Date.now() + 3600000).toISOString(),
+      }),
+    },
+    "/completejob": {
+      POST: async (req: Request) => {
+        ctx.jobDone = true;
+        const body = await req.json() as any;
+        const conclusion = body.conclusion || "unknown";
+        ctx.output.emit({ type: "server", tag: "job", message: `Job completed (${conclusion})` });
+        ctx.output.emit({ type: "job_complete", conclusion });
+        ctx.resolveJobCompleted(conclusion);
+        return Response.json({});
+      },
+    },
+  };
+}
+
+function buildJobMessage(ctx: RunContext): object {
+  return {
+    messageType: "RunnerJobRequest",
+    plan: {
+      scopeIdentifier: "00000000-0000-0000-0000-000000000000",
+      planType: "Build",
+      version: 1,
+      planId: ctx.planId,
+      definition: { id: 1, name: ctx.workflowName },
+      owner: { id: 1, name: ctx.workflowName },
+    },
+    timeline: {
+      id: ctx.timelineId,
+      changeId: 1,
+      location: null,
+    },
+    jobId: ctx.jobId,
+    jobDisplayName: ctx.jobName,
+    jobName: ctx.jobName.replace(/[^a-zA-Z0-9_]/g, "_"),
+    requestId: 1,
+    lockedUntil: new Date(Date.now() + 3600000).toISOString(),
+    resources: {
+      endpoints: [
+        {
+          id: randomUUID(),
+          name: "SystemVssConnection",
+          type: "ExternalConnection",
+          url: `${ctx.serverBaseUrl}/`,
+          authorization: {
+            scheme: "OAuth",
+            parameters: { AccessToken: ctx.jwt },
+          },
+          data: {
+            CacheServerUrl: `${ctx.serverBaseUrl}/`,
+            FeedStreamUrl: `ws://${ctx.hostAddress}:${ctx.port}/feed`,
+          },
+          isShared: false,
+          isReady: true,
+        },
+      ],
+      repositories: [
+        {
+          alias: "self",
+          id: "self",
+          properties: {
+            id: "github",
+            type: "GitHub",
+            url: `${ctx.repoCtx.serverUrl}/${ctx.repoCtx.fullName}`,
+            version: ctx.repoCtx.ref,
+          },
+        },
+      ],
+    },
+    contextData: {
+      github: buildGitHubContextData(ctx.repoCtx, ctx.eventName, ctx.eventPayload, ctx.workflowName, ctx.jobName),
+      strategy: { t: 2, d: [] },
+      matrix: { t: 2, d: [] },
+      job: { t: 2, d: [] },
+      runner: {
+        t: 2,
+        d: [
+          { k: "os", v: ctx.runnerOs },
+          { k: "arch", v: ctx.runnerArch },
+          { k: "name", v: "local-runner" },
+          { k: "tool_cache", v: "" },
+          { k: "temp", v: "/tmp" },
+          { k: "workspace", v: "" },
+          { k: "debug", v: "" },
+        ],
+      },
+    },
+    variables: {
+      "system.culture": { value: "en-US" },
+      "system.github.token": { value: ctx.repoCtx.token, isSecret: true },
+      "system.github.job": { value: ctx.jobName.replace(/[^a-zA-Z0-9_]/g, "_") },
+      "system.github.launch_endpoint": {
+        value: ctx.serverBaseUrl,
+      },
+      "system.github.results_endpoint": {
+        value: ctx.serverBaseUrl,
+      },
+      ...Object.fromEntries(
+        Object.entries(ctx.secrets).map(([k, v]) => [`secrets.${k}`, { value: v, isSecret: true }]),
+      ),
+      ...Object.fromEntries(
+        Object.entries(ctx.variables).map(([k, v]) => [`vars.${k}`, { value: v }]),
+      ),
+    },
+    mask: [
+      ...Object.values(ctx.secrets).filter((v) => v.length > 0).map((v) => ({ type: "regex", value: v })),
+    ],
+    steps: ctx.jobSteps,
+    workspace: { clean: null },
+    fileTable: [],
+  };
+}

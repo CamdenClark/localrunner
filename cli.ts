@@ -4,7 +4,7 @@ import { join, resolve, basename } from "path";
 import { getRepoContext } from "./context";
 import { parseWorkflow, matchesEvent, normalizeOn, workflowStepsToRunnerSteps } from "./workflow";
 import { generateEventPayload } from "./events";
-import { scriptStep, actionStep } from "./server";
+import { scriptStep, actionStep } from "./server/index";
 import { startRun } from "./orchestrator";
 import { buildExpressionContext, evaluateExpressions } from "./expressions";
 import { resolveSecrets, scanRequiredSecrets } from "./secrets";

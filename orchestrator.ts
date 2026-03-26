@@ -1,4 +1,4 @@
-import { createServer, type ServerConfig } from "./server";
+import { createServer, type ServerConfig } from "./server/index";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { Service } from "./workflow";
