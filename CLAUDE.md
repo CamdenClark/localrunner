@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 - `bun test` — run unit tests (default profile)
-- `bun test --config=acceptance` — run acceptance tests
+- `bun test --config=bunfig.acceptance.toml` — run acceptance tests
 - `bun test <file>` — run a single test file (e.g. `bun test expressions.test.ts`)
 - `bun cli.ts push` — run workflows matching a `push` event
 - `bun cli.ts pull_request` — run workflows matching a `pull_request` event
