@@ -11,6 +11,7 @@ export const runs = sqliteTable("runs", {
   repoFullName: text("repo_full_name"),
   sha: text("sha"),
   ref: text("ref"),
+  status: text("status").notNull().default("queued"),
   conclusion: text("conclusion"),
   startedAt: integer("started_at").notNull(),
   completedAt: integer("completed_at"),
@@ -22,6 +23,7 @@ export const jobs = sqliteTable("jobs", {
     .notNull()
     .references(() => runs.id),
   name: text("name").notNull(),
+  status: text("status").notNull().default("queued"),
   conclusion: text("conclusion"),
   startedAt: integer("started_at").notNull(),
   completedAt: integer("completed_at"),
@@ -33,6 +35,7 @@ export const steps = sqliteTable("steps", {
     .notNull()
     .references(() => jobs.id),
   name: text("name").notNull(),
+  status: text("status").notNull().default("queued"),
   conclusion: text("conclusion"),
   startedAt: integer("started_at"),
   completedAt: integer("completed_at"),

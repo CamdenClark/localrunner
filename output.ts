@@ -201,6 +201,7 @@ export class OutputHandler {
           .values({
             jobId: this.jobId,
             name,
+            status: "in_progress",
             startedAt: timestamp,
             sortOrder: order,
           })
@@ -229,7 +230,7 @@ export class OutputHandler {
         if (stepDbId) {
           const db = getDb();
           db.update(stepsTable)
-            .set({ conclusion, completedAt: timestamp })
+            .set({ status: "completed", conclusion, completedAt: timestamp })
             .where(eq(stepsTable.id, stepDbId))
             .run();
           this.flushStepLogs(name);
@@ -289,7 +290,7 @@ export class OutputHandler {
           const stepDbId = this.stepDbIds.get(name);
           if (stepDbId) {
             db.update(stepsTable)
-              .set({ conclusion: "cancelled", completedAt: now })
+              .set({ status: "completed", conclusion: "cancelled", completedAt: now })
               .where(eq(stepsTable.id, stepDbId))
               .run();
           }
@@ -297,11 +298,11 @@ export class OutputHandler {
       }
 
       db.update(jobs)
-        .set({ conclusion: "cancelled", completedAt: now })
+        .set({ status: "completed", conclusion: "cancelled", completedAt: now })
         .where(eq(jobs.id, this.jobId))
         .run();
       db.update(runs)
-        .set({ conclusion: "cancelled", completedAt: now })
+        .set({ status: "completed", conclusion: "cancelled", completedAt: now })
         .where(eq(runs.id, this.runId))
         .run();
     } catch {}

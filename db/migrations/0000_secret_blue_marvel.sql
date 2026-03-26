@@ -12,6 +12,7 @@ CREATE TABLE `jobs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`run_id` text NOT NULL,
 	`name` text NOT NULL,
+	`status` text DEFAULT 'queued' NOT NULL,
 	`conclusion` text,
 	`started_at` integer NOT NULL,
 	`completed_at` integer,
@@ -29,6 +30,7 @@ CREATE TABLE `runs` (
 	`repo_full_name` text,
 	`sha` text,
 	`ref` text,
+	`status` text DEFAULT 'queued' NOT NULL,
 	`conclusion` text,
 	`started_at` integer NOT NULL,
 	`completed_at` integer
@@ -46,6 +48,7 @@ CREATE TABLE `steps` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`job_id` text NOT NULL,
 	`name` text NOT NULL,
+	`status` text DEFAULT 'queued' NOT NULL,
 	`conclusion` text,
 	`started_at` integer,
 	`completed_at` integer,

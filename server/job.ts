@@ -58,11 +58,11 @@ export function jobRoutes(ctx: RunContext) {
           const db = getDb();
           const now = Date.now();
           db.update(jobs)
-            .set({ conclusion, completedAt: now })
+            .set({ status: "completed", conclusion, completedAt: now })
             .where(eq(jobs.id, ctx.jobId))
             .run();
           db.update(runs)
-            .set({ conclusion, completedAt: now })
+            .set({ status: "completed", conclusion, completedAt: now })
             .where(eq(runs.id, ctx.runId))
             .run();
         } catch {}

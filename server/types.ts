@@ -114,6 +114,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
         repoFullName: config.repoCtx.fullName,
         sha: config.repoCtx.sha,
         ref: config.repoCtx.ref,
+        status: "in_progress",
         startedAt: now,
       })
       .run();
@@ -122,6 +123,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
         id: jobId,
         runId,
         name: config.jobName,
+        status: "in_progress",
         startedAt: now,
       })
       .run();
