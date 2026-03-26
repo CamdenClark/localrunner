@@ -1,111 +1,67 @@
----
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
-alwaysApply: false
----
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Project Overview
 
-## APIs
+**localrunner** is a local GitHub Actions workflow executor. It parses workflow YAML files, spins up a mock GitHub Actions server implementing GitHub's internal runner protocol, and launches the official GitHub Actions runner (in Docker or locally) to execute workflows without pushing to GitHub.
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+## Commands
+
+- `bun test` — run all unit tests
+- `bun test <file>` — run a single test file (e.g. `bun test expressions.test.ts`)
+- `bun cli.ts push` — run workflows matching a `push` event
+- `bun cli.ts pull_request` — run workflows matching a `pull_request` event
+- `bun cli.ts -l push` — list matching workflows without running
+- `bun cli.ts -W .github/workflows/test.yml push` — run a specific workflow
+- `bun cli.ts -j <job-name> push` — run a specific job
+- `bun cli.ts --raw push` — raw output mode (for agents)
+- `bun cli.ts --verbose push` — verbose debug output
+
+## Use Bun, Not Node.js
+
+- `bun <file>` not `node` or `ts-node`
+- `bun test` not `jest` or `vitest`
+- `bun install` not `npm install`
+- `bunx` not `npx`
+- `Bun.serve()` not `express`; `Bun.file()` not `node:fs`; `Bun.$` not `execa`
+- Bun auto-loads `.env` — no dotenv needed
+
+## Architecture
+
+### Entry Point & CLI (`cli.ts`)
+Parses args (`-W`, `-j`, `-s`, `--var`, `--port`, `--raw`, `--verbose`) and orchestrates the run: discovers workflows, resolves context/secrets/variables, starts the server, and launches the runner.
+
+### Workflow Parsing (`workflow.ts`)
+Zod schemas validate workflow YAML. `matchesEvent()` filters workflows by event type, branch/tag patterns, and path filters.
+
+### Mock GitHub Actions Server (`server/`)
+A `Bun.serve()` HTTP server implementing the GitHub Actions runner protocol:
+- **`auth.ts`** — OAuth token and connection data endpoints
+- **`job.ts`** — Job acquire/renew/complete lifecycle
+- **`actions.ts`** — Resolves action references (owner/repo@ref) to commit SHAs via GitHub API
+- **`cache.ts`** — `actions/cache` API backed by local filesystem (`~/.localrunner/cache/`), 7-day TTL
+- **`logs.ts`** — Log upload, timeline updates, WebSocket live feed on `/feed`
+- **`results.ts`** — Results API (Twirp RPC protocol), blob uploads
+- **`steps.ts`** — Builds step definitions (script steps vs action steps)
+
+### Expression Evaluation (`expressions.ts`)
+Evaluates `${{ expr }}` using a flat lookup table for `github.*`, `runner.*`, `env.*`, `secrets.*`, `variables.*` contexts. Flattens event payloads into dot-notation paths.
+
+### Context & Secrets (`context.ts`, `secrets.ts`, `variables.ts`)
+- Context: repo owner/name from git remote, SHA/branch from git, token from `gh` CLI
+- Secrets: `.secrets` file → CLI `-s` args → env vars → GITHUB_TOKEN
+- Variables: `gh variable list` → `.vars` file → CLI `--var` args
+
+### Orchestrator (`orchestrator.ts`)
+Builds JIT runner config (base64-encoded), launches the runner binary via Docker (`docker run`) or locally, writes event payload to temp file.
+
+### Output (`output.ts`)
+Three modes: **pretty** (colored, human-friendly, default), **raw** (minimal markers for agent parsing), **verbose** (full debug with timestamps).
 
 ## Testing
 
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
-
-## Frontend
-
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
-
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+- Unit tests live alongside source files (`*.test.ts` in root)
+- Acceptance tests in `acceptance/` clone real repos and run localrunner end-to-end
+- `bunfig.toml` excludes `runner/**` from test discovery
+- Acceptance tests support sharding via `SHARD_INDEX`/`SHARD_TOTAL` env vars
