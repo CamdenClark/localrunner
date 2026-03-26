@@ -4,6 +4,7 @@ import type { RepoContext } from "./context";
 import { join } from "path";
 import { homedir } from "os";
 import { mkdirSync, existsSync, readdirSync, unlinkSync, readFileSync } from "fs";
+import { OutputHandler } from "./output";
 
 export interface ServerConfig {
   port: number;
@@ -18,12 +19,13 @@ export interface ServerConfig {
   hostAddress?: string;
   runnerOs?: string;
   runnerArch?: string;
+  output?: OutputHandler;
 }
 
 export interface ServerHandle {
   server: ReturnType<typeof Bun.serve>;
   jobCompleted: Promise<string>;
-  logs: string[];
+  output: OutputHandler;
 }
 
 // --- Step builders ---
@@ -93,12 +95,13 @@ async function resolveActions(
   actions: { action: string; version: string; path: string }[],
   token: string,
   apiUrl: string,
+  output: OutputHandler,
 ): Promise<Record<string, object>> {
   const result: Record<string, object> = {};
 
   for (const { action, version, path } of actions) {
     const key = `${action}@${version}`;
-    console.log(`[actions] Resolving ${key}...`);
+    output.emit({ type: "server", tag: "actions", message: `Resolving ${key}...` });
 
     try {
       const refRes = await fetch(
@@ -147,7 +150,7 @@ async function resolveActions(
         }
       }
 
-      console.log(`[actions] Resolved ${key} -> ${sha.slice(0, 12)}`);
+      output.emit({ type: "server", tag: "actions", message: `Resolved ${key} -> ${sha.slice(0, 12)}` });
 
       result[key] = {
         name: action,
@@ -162,7 +165,7 @@ async function resolveActions(
         },
       };
     } catch (err) {
-      console.error(`[actions] Failed to resolve ${key}:`, err);
+      output.emit({ type: "server", tag: "actions", message: `Failed to resolve ${key}: ${err}` });
       result[key] = {
         name: action,
         resolved_name: action,
@@ -217,7 +220,7 @@ function removeCacheEntry(cacheId: number): void {
   try { unlinkSync(cacheMetaPath(cacheId)); } catch {}
 }
 
-function evictExpiredCaches(): void {
+function evictExpiredCaches(output: OutputHandler): void {
   const dir = getCacheDir();
   for (const f of readdirSync(dir).filter(f => f.endsWith(".json"))) {
     try {
@@ -225,7 +228,7 @@ function evictExpiredCaches(): void {
       if (isCacheExpired(meta)) {
         const cacheId = parseInt(f.replace("cache-", "").replace(".json", ""));
         removeCacheEntry(cacheId);
-        console.log(`[cache] Evicted expired entry: ${meta.key}`);
+        output.emit({ type: "server", tag: "cache", message: `Evicted expired entry: ${meta.key}` });
       }
     } catch {}
   }
@@ -288,12 +291,7 @@ export function createServer(config: ServerConfig): ServerHandle {
 
   let jobDispatched = false;
   let jobDone = false;
-  const logs: string[] = [];
-
-  function log(message: string) {
-    console.log(message);
-    logs.push(message);
-  }
+  const output = config.output ?? new OutputHandler("verbose");
 
   let resolveJobCompleted: (conclusion: string) => void;
   const jobCompleted = new Promise<string>((resolve) => {
@@ -321,7 +319,7 @@ export function createServer(config: ServerConfig): ServerHandle {
   const LOCAL_JWT = makeJwt();
 
   // Clean up expired cache entries on startup
-  evictExpiredCaches();
+  evictExpiredCaches(output);
 
   function buildConnectionData(): object {
     return {
@@ -449,7 +447,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       // --- Auth & connection ---
       "/_apis/oauth2/token": {
         POST: () => {
-          log("[auth] Token request");
+          output.emit({ type: "server", tag: "auth", message: "Token request" });
           return Response.json({
             access_token: LOCAL_JWT,
             token_type: "Bearer",
@@ -459,7 +457,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       },
       "/_apis/connectionData": {
         GET: () => {
-          log("[connect] Connection data request");
+          output.emit({ type: "server", tag: "connect", message: "Connection data request" });
           return Response.json(buildConnectionData());
         },
       },
@@ -467,7 +465,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       // --- Session ---
       "/session": {
         POST: () => {
-          log("[session] Created");
+          output.emit({ type: "server", tag: "session", message: "Created" });
           return Response.json({
             sessionId: SESSION_ID,
             ownerName: "local",
@@ -476,7 +474,7 @@ export function createServer(config: ServerConfig): ServerHandle {
           });
         },
         DELETE: () => {
-          log("[session] Deleted");
+          output.emit({ type: "server", tag: "session", message: "Deleted" });
           return Response.json({});
         },
       },
@@ -486,7 +484,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         GET: () => {
           if (!jobDispatched) {
             jobDispatched = true;
-            log("[message] Dispatching job!");
+            output.emit({ type: "server", tag: "message", message: "Dispatching job!" });
             return Response.json({
               messageId: 1,
               messageType: "RunnerJobRequest",
@@ -513,7 +511,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       "/acknowledge": { POST: () => Response.json({}) },
       "/acquirejob": {
         POST: () => {
-          log("[job] Job acquired");
+          output.emit({ type: "server", tag: "job", message: "Job acquired" });
           return Response.json(buildJobMessage(jobSteps));
         },
       },
@@ -527,15 +525,8 @@ export function createServer(config: ServerConfig): ServerHandle {
           jobDone = true;
           const body = await req.json() as any;
           const conclusion = body.conclusion || "unknown";
-          log(`[job] Job completed (${conclusion})`);
-          if (body.stepResults) {
-            for (const step of body.stepResults) {
-              if (step.name && step.conclusion) {
-                const icon = step.conclusion === "succeeded" ? "✓" : step.conclusion === "skipped" ? "○" : "✗";
-                log(`  ${icon} ${step.name}: ${step.conclusion}`);
-              }
-            }
-          }
+          output.emit({ type: "server", tag: "job", message: `Job completed (${conclusion})` });
+          output.emit({ type: "job_complete", conclusion });
           resolveJobCompleted!(conclusion);
           return Response.json({});
         },
@@ -547,11 +538,11 @@ export function createServer(config: ServerConfig): ServerHandle {
           const url = new URL(req.url);
           const keys = url.searchParams.get("keys")?.split(",") || [];
           const version = url.searchParams.get("version") || "";
-          log(`[cache] Lookup keys=${keys.join(",")} version=${version.slice(0, 12)}`);
+          output.emit({ type: "server", tag: "cache", message: `Lookup keys=${keys.join(",")} version=${version.slice(0, 12)}` });
 
           const found = findCache(keys, version);
           if (found) {
-            log(`[cache] Hit: ${found.entry.key} (id=${found.cacheId})`);
+            output.emit({ type: "server", tag: "cache", message: `Hit: ${found.entry.key} (id=${found.cacheId})` });
             return Response.json({
               result: "hit",
               cacheId: found.cacheId,
@@ -561,7 +552,7 @@ export function createServer(config: ServerConfig): ServerHandle {
               archiveLocation: `${serverBaseUrl}/_apis/artifactcache/download/${found.cacheId}`,
             });
           }
-          log("[cache] Miss");
+          output.emit({ type: "server", tag: "cache", message: "Miss" });
           return new Response(null, { status: 204 });
         },
       },
@@ -569,7 +560,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         GET: (req) => {
           const cacheId = parseInt(req.params.id);
           const filePath = cacheEntryPath(cacheId);
-          log(`[cache] Download id=${cacheId}`);
+          output.emit({ type: "server", tag: "cache", message: `Download id=${cacheId}` });
           if (existsSync(filePath)) {
             const file = Bun.file(filePath);
             return new Response(file, {
@@ -595,7 +586,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             createdAt: new Date().toISOString(),
           };
           await Bun.write(cacheMetaPath(cacheId), JSON.stringify(entry));
-          log(`[cache] Reserved id=${cacheId} key=${body.key}`);
+          output.emit({ type: "server", tag: "cache", message: `Reserved id=${cacheId} key=${body.key}` });
           return Response.json({ cacheId });
         },
       },
@@ -605,7 +596,7 @@ export function createServer(config: ServerConfig): ServerHandle {
           const data = await req.arrayBuffer();
           const filePath = cacheEntryPath(cacheId);
           const contentRange = req.headers.get("Content-Range");
-          log(`[cache] Upload id=${cacheId} size=${data.byteLength} range=${contentRange || "full"}`);
+          output.emit({ type: "server", tag: "cache", message: `Upload id=${cacheId} size=${data.byteLength} range=${contentRange || "full"}` });
 
           if (contentRange) {
             const match = contentRange.match(/bytes (\d+)-(\d+)\//);
@@ -651,7 +642,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             }
 
             await Bun.write(metaPath, JSON.stringify(meta));
-            log(`[cache] Committed id=${cacheId} key=${meta.key} size=${meta.size}`);
+            output.emit({ type: "server", tag: "cache", message: `Committed id=${cacheId} key=${meta.key} size=${meta.size}` });
           }
           return new Response(null, { status: 204 });
         },
@@ -663,7 +654,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       const path = url.pathname;
       const method = req.method;
 
-      log(`[${method}] ${path}${url.search}`);
+      output.emit({ type: "server", tag: method, message: `${path}${url.search}` });
 
       // Runner resolve actions (wildcard path with plan/job IDs)
       if (method === "POST" && path.includes("/runnerresolve/actions")) {
@@ -673,7 +664,7 @@ export function createServer(config: ServerConfig): ServerHandle {
           version: a.version || a.ref,
           path: a.path || "",
         }));
-        const resolved = await resolveActions(actions, repoCtx.token, repoCtx.apiUrl);
+        const resolved = await resolveActions(actions, repoCtx.token, repoCtx.apiUrl, output);
         return Response.json({ actions: resolved });
       }
 
@@ -686,13 +677,15 @@ export function createServer(config: ServerConfig): ServerHandle {
           const body = await req.json() as any;
           const records = body.value || body;
           if (Array.isArray(records)) {
+            const results = ["Succeeded", "SucceededWithIssues", "Failed", "Cancelled", "Skipped", "Abandoned"];
             for (const record of records) {
               if (record.name && record.state !== undefined) {
-                const states = ["Pending", "InProgress", "Completed"];
-                const results = ["Succeeded", "SucceededWithIssues", "Failed", "Cancelled", "Skipped", "Abandoned"];
-                const state = states[record.state] || record.state;
-                const result = record.result != null ? results[record.result] || record.result : "";
-                log(`  [step] ${record.name}: ${state}${result ? ` (${result})` : ""}`);
+                if (record.state === 1) { // InProgress
+                  output.emit({ type: "step_start", stepName: record.name, timestamp: Date.now() });
+                } else if (record.state === 2) { // Completed
+                  const result = record.result != null ? (results[record.result] || String(record.result)) : "unknown";
+                  output.emit({ type: "step_complete", stepName: record.name, conclusion: result.toLowerCase(), timestamp: Date.now() });
+                }
               }
             }
           }
@@ -708,7 +701,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         if (method === "POST" && path.match(/\/logs\/\d+/)) {
           const text = await req.text();
           for (const line of text.split("\n")) {
-            if (line.trim()) log(`  [log] ${line.trim()}`);
+            if (line.trim()) output.emit({ type: "step_log", line: line.trim() });
           }
         }
         return Response.json({ id: 1, path: "logs/1" });
@@ -723,7 +716,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         }
         const text = await req.text();
         for (const line of text.split("\n")) {
-          if (line.trim()) log(`  [feed] ${line.trim()}`);
+          if (line.trim()) output.emit({ type: "step_log", line: line.trim() });
         }
         return Response.json({});
       }
@@ -734,15 +727,16 @@ export function createServer(config: ServerConfig): ServerHandle {
 
         // Step updates
         if (path.includes("WorkflowStepsUpdate")) {
-          const statusNames: Record<number, string> = { 0: "Unknown", 3: "InProgress", 5: "Pending", 6: "Completed" };
-          const conclusionNames: Record<number, string> = { 0: "Unknown", 2: "Success", 3: "Failure", 4: "Cancelled", 7: "Skipped" };
+          const conclusionNames: Record<number, string> = { 2: "succeeded", 3: "failed", 4: "cancelled", 7: "skipped" };
           if (body.steps) {
             for (const step of body.steps) {
-              const status = statusNames[step.status] || step.status;
-              const conclusion = step.conclusion ? conclusionNames[step.conclusion] || step.conclusion : "";
               if (step.name) {
-                const icon = step.conclusion === 2 ? "✓" : step.conclusion === 7 ? "○" : step.conclusion ? "✗" : "▶";
-                log(`  [step] ${icon} ${step.name}: ${status}${conclusion ? ` (${conclusion})` : ""}`);
+                if (step.status === 3) { // InProgress
+                  output.emit({ type: "step_start", stepName: step.name, timestamp: Date.now() });
+                } else if (step.status === 6) { // Completed
+                  const conclusion = conclusionNames[step.conclusion] || "unknown";
+                  output.emit({ type: "step_complete", stepName: step.name, conclusion, timestamp: Date.now() });
+                }
               }
             }
           }
@@ -764,7 +758,7 @@ export function createServer(config: ServerConfig): ServerHandle {
           return Response.json({ ok: true });
         }
 
-        log(`[twirp] ${path}`);
+        output.emit({ type: "server", tag: "twirp", message: path });
         return Response.json({});
       }
 
@@ -773,7 +767,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         if (method === "PUT" || method === "PATCH" || method === "POST") {
           const text = await req.text();
           for (const line of text.split("\n")) {
-            if (line.trim()) log(`  [log] ${line.trim()}`);
+            if (line.trim()) output.emit({ type: "step_log", line: line.trim() });
           }
         }
         return new Response(null, { status: 201, headers: { "x-ms-request-id": randomUUID() } });
@@ -782,17 +776,17 @@ export function createServer(config: ServerConfig): ServerHandle {
       // Events
       if (path.includes("/events")) {
         const body = await req.json() as any;
-        log(`[event] ${body.name || "unknown"}`);
+        output.emit({ type: "server", tag: "event", message: body.name || "unknown" });
         return Response.json({});
       }
 
-      log(`[unhandled] ${method} ${path}`);
+      output.emit({ type: "server", tag: "unhandled", message: `${method} ${path}` });
       return Response.json({});
     },
 
     websocket: {
       open(ws) {
-        log("[feed] WebSocket connected");
+        output.emit({ type: "server", tag: "feed", message: "WebSocket connected" });
       },
       message(ws, message) {
         try {
@@ -800,25 +794,25 @@ export function createServer(config: ServerConfig): ServerHandle {
           if (data.value && Array.isArray(data.value)) {
             for (const line of data.value) {
               if (typeof line === "string" && line.trim()) {
-                log(`  [log] ${line.trim()}`);
+                output.emit({ type: "step_log", line: line.trim() });
               }
             }
           }
         } catch {
           const text = typeof message === "string" ? message : new TextDecoder().decode(message);
-          if (text.trim()) log(`  [feed] ${text.trim()}`);
+          if (text.trim()) output.emit({ type: "step_log", line: text.trim() });
         }
       },
       close(ws) {
-        log("[feed] WebSocket closed");
+        output.emit({ type: "server", tag: "feed", message: "WebSocket closed" });
       },
     },
   });
 
-  log(`Local Actions server listening on http://localhost:${port}`);
-  log(`Session: ${SESSION_ID}`);
-  log(`Job: ${JOB_ID}`);
-  log("Waiting for runner to connect...\n");
+  output.emit({ type: "info", message: `Local Actions server listening on http://localhost:${port}` });
+  output.emit({ type: "info", message: `Session: ${SESSION_ID}` });
+  output.emit({ type: "info", message: `Job: ${JOB_ID}` });
+  output.emit({ type: "info", message: "Waiting for runner to connect...\n" });
 
-  return { server, jobCompleted, logs };
+  return { server, jobCompleted, output };
 }

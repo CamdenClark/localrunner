@@ -2,6 +2,7 @@ import { createServer, type ServerConfig } from "./server";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { Service } from "./workflow";
+import { OutputHandler } from "./output";
 
 export interface RunConfig {
   port: number;
@@ -16,6 +17,7 @@ export interface RunConfig {
   variables?: Record<string, string>;
   dockerImage?: string;
   services?: Record<string, Service>;
+  output?: OutputHandler;
 }
 
 function buildJitConfig(port: number, hostAddress: string): string {
@@ -53,7 +55,7 @@ export interface RunResult {
 }
 
 export async function startRun(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, dockerImage, services } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, dockerImage, services, output: configOutput } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
@@ -63,7 +65,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
   await Bun.write(join(tmpDir, "event.json"), JSON.stringify(eventPayload, null, 2));
 
   // Start the mock server
-  const { server, jobCompleted, logs } = createServer({
+  const { server, jobCompleted, output } = createServer({
     port,
     repoCtx,
     jobSteps,
@@ -76,6 +78,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     hostAddress,
     runnerOs: isDocker ? "Linux" : "macOS",
     runnerArch: isDocker ? "X64" : "ARM64",
+    output: configOutput,
   });
 
   const jitconfig = buildJitConfig(port, hostAddress);
@@ -86,7 +89,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     networkName = `localrunner-${Date.now()}`;
     const netProc = Bun.spawnSync(["docker", "network", "create", networkName]);
     if (netProc.exitCode !== 0) {
-      console.error(`Failed to create Docker network: ${netProc.stderr.toString()}`);
+      output.emit({ type: "info", message: `Failed to create Docker network: ${netProc.stderr.toString()}` });
       server.stop(true);
       process.exit(1);
     }
@@ -96,7 +99,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
   const serviceContainerIds: string[] = [];
   if (isDocker && services && networkName) {
     for (const [serviceName, serviceConfig] of Object.entries(services)) {
-      console.log(`Starting service '${serviceName}' (${serviceConfig.image})...`);
+      output.emit({ type: "info", message: `Starting service '${serviceName}' (${serviceConfig.image})...` });
       const args = [
         "docker", "run", "-d", "--rm",
         "--network", networkName,
@@ -140,7 +143,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
 
       const svcProc = Bun.spawnSync(args);
       if (svcProc.exitCode !== 0) {
-        console.error(`Failed to start service '${serviceName}': ${svcProc.stderr.toString()}`);
+        output.emit({ type: "info", message: `Failed to start service '${serviceName}': ${svcProc.stderr.toString()}` });
         // Clean up any already-started services
         for (const id of serviceContainerIds) {
           Bun.spawnSync(["docker", "rm", "-f", id]);
@@ -157,7 +160,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     await new Promise((r) => setTimeout(r, 2000));
   }
 
-  console.log(isDocker ? `Starting runner in Docker (${dockerImage})...\n` : "Starting runner...\n");
+  output.emit({ type: "info", message: isDocker ? `Starting runner in Docker (${dockerImage})...\n` : "Starting runner...\n" });
 
   let proc: ReturnType<typeof Bun.spawn>;
 
@@ -190,8 +193,8 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     });
   }
 
-  // Stream runner output to console and collect in logs
-  async function pipeStream(stream: ReadableStream<Uint8Array> | null, prefix: string) {
+  // Stream runner output and emit via output handler
+  async function pipeStream(stream: ReadableStream<Uint8Array> | null, streamName: "stdout" | "stderr") {
     if (!stream) return;
     const reader = stream.getReader();
     const decoder = new TextDecoder();
@@ -203,20 +206,16 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
       for (const line of lines) {
-        const msg = `  [runner${prefix}] ${line}`;
-        console.log(msg);
-        logs.push(msg);
+        output.emit({ type: "runner", line, stream: streamName });
       }
     }
     if (buffer) {
-      const msg = `  [runner${prefix}] ${buffer}`;
-      console.log(msg);
-      logs.push(msg);
+      output.emit({ type: "runner", line: buffer, stream: streamName });
     }
   }
 
-  const stdoutPipe = pipeStream(proc.stdout as ReadableStream<Uint8Array>, "");
-  const stderrPipe = pipeStream(proc.stderr as ReadableStream<Uint8Array>, ":err");
+  const stdoutPipe = pipeStream(proc.stdout as ReadableStream<Uint8Array>, "stdout");
+  const stderrPipe = pipeStream(proc.stderr as ReadableStream<Uint8Array>, "stderr");
 
   // Wait for either job completion or runner exit
   const runnerExit = proc.exited;
@@ -233,7 +232,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
   await new Promise((r) => setTimeout(r, 500));
 
   // Clean up
-  console.log("\nRunner finished. Stopping server...");
+  output.emit({ type: "info", message: "\nRunner finished. Stopping server..." });
   server.stop(true);
   proc.kill();
 
@@ -256,5 +255,5 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     // best effort cleanup
   }
 
-  return { conclusion, logs };
+  return { conclusion, logs: output.allLogs };
 }

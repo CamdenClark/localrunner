@@ -10,6 +10,7 @@ import { buildExpressionContext, evaluateExpressions } from "./expressions";
 import { resolveSecrets, scanRequiredSecrets } from "./secrets";
 import { resolveVariables } from "./variables";
 import { existsSync } from "fs";
+import { OutputHandler, type OutputMode } from "./output";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -26,6 +27,8 @@ const { values, positionals } = parseArgs({
     image: { type: "string" },
     platform: { type: "string", short: "P", multiple: true },
     port: { type: "string", default: "9637" },
+    raw: { type: "boolean" },
+    verbose: { type: "boolean", short: "v" },
     help: { type: "boolean", short: "h" },
   },
   allowPositionals: true,
@@ -51,6 +54,8 @@ Flags:
   --image <name>             Docker image override for all jobs
   -P, --platform <label=img> Map runs-on label to Docker image (e.g. -P ubuntu-latest=myimage:tag)
   --port <number>            Server port (default: 9637)
+  --raw                      Raw output for agents (step markers + log lines)
+  -v, --verbose              Verbose output with full server internals
   -h, --help                Show this help message
 
 Examples:
@@ -72,6 +77,9 @@ if (values.help) {
 const eventName: string = positionals[0] || "push";
 
 const port = parseInt(values.port || "9637", 10);
+
+const outputMode: OutputMode = values.raw ? "raw" : values.verbose ? "verbose" : "pretty";
+const output = new OutputHandler(outputMode);
 
 // --- Find and parse workflow(s) ---
 
@@ -304,6 +312,7 @@ async function main() {
       variables,
       dockerImage,
       services: selectedJob.services,
+      output,
     });
 
     if (result.conclusion !== "succeeded") {
