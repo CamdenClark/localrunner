@@ -92,6 +92,7 @@ export function buildGitHubContextData(
   eventPayload: object = {},
   workflowName: string = "Local Workflow",
   jobName: string = "local_job",
+  runId: string = "1",
 ): object {
   const headRef = eventName === "pull_request"
     ? (eventPayload as any)?.pull_request?.head?.ref || ""
@@ -111,7 +112,7 @@ export function buildGitHubContextData(
       { k: "base_ref", v: baseRef },
       { k: "event_name", v: eventName },
       { k: "workflow", v: workflowName },
-      { k: "run_id", v: "1" },
+      { k: "run_id", v: runId },
       { k: "run_number", v: "1" },
       { k: "run_attempt", v: "1" },
       { k: "actor", v: ctx.actor },

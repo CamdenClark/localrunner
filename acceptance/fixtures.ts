@@ -34,4 +34,12 @@ export const fixtures: AcceptanceFixture[] = [
     event: "push",
     expected: "succeeded",
   },
+  {
+    name: "artifacts — upload",
+    repo: "CamdenClark/localrunner-tests",
+    commit: "a2de9845095610494921f28920adfafc183c3ec7",
+    workflow: ".github/workflows/artifact-upload.yml",
+    event: "push",
+    expected: "succeeded",
+  },
 ];

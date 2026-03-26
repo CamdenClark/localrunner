@@ -90,6 +90,7 @@ function buildJobMessage(ctx: RunContext): object {
           },
           data: {
             CacheServerUrl: `${ctx.serverBaseUrl}/`,
+            ResultsServiceUrl: `${ctx.serverBaseUrl}/`,
             FeedStreamUrl: `ws://${ctx.hostAddress}:${ctx.port}/feed`,
           },
           isShared: false,
@@ -110,7 +111,7 @@ function buildJobMessage(ctx: RunContext): object {
       ],
     },
     contextData: {
-      github: buildGitHubContextData(ctx.repoCtx, ctx.eventName, ctx.eventPayload, ctx.workflowName, ctx.jobName),
+      github: buildGitHubContextData(ctx.repoCtx, ctx.eventName, ctx.eventPayload, ctx.workflowName, ctx.jobName, ctx.runId),
       strategy: { t: 2, d: [] },
       matrix: { t: 2, d: [] },
       job: { t: 2, d: [] },
@@ -136,6 +137,12 @@ function buildJobMessage(ctx: RunContext): object {
       },
       "system.github.results_endpoint": {
         value: ctx.serverBaseUrl,
+      },
+      "system.github.workflow_run_backend_id": {
+        value: ctx.runId,
+      },
+      "system.github.workflow_job_run_backend_id": {
+        value: ctx.jobId,
       },
       ...Object.fromEntries(
         Object.entries(ctx.secrets).map(([k, v]) => [`secrets.${k}`, { value: v, isSecret: true }]),

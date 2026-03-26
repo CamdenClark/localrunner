@@ -6,6 +6,7 @@ import { cacheRoutes } from "./cache";
 import { actionsHandler } from "./actions";
 import { resultsHandler } from "./results";
 import { logsHandler, websocketHandlers } from "./logs";
+import { artifactDownloadHandler } from "./artifacts";
 
 export { scriptStep, actionStep } from "./steps";
 export type { ServerConfig, ServerHandle } from "./types";
@@ -18,6 +19,7 @@ export function createServer(config: ServerConfig): ServerHandle {
   const handleActions = actionsHandler(ctx);
   const handleResults = resultsHandler(ctx);
   const handleLogs = logsHandler(ctx);
+  const handleArtifacts = artifactDownloadHandler(ctx);
 
   const server = Bun.serve({
     port: ctx.port,
@@ -40,6 +42,9 @@ export function createServer(config: ServerConfig): ServerHandle {
 
       const resultsRes = await handleResults(req);
       if (resultsRes) return resultsRes;
+
+      const artifactsRes = await handleArtifacts(req);
+      if (artifactsRes) return artifactsRes;
 
       // Feed WebSocket upgrade needs special handling
       if (path.includes("/feed") && req.headers.get("upgrade")?.toLowerCase() === "websocket") {

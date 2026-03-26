@@ -40,6 +40,7 @@ export interface RunContext {
   runnerArch: string;
   output: OutputHandler;
 
+  runId: string;
   sessionId: string;
   planId: string;
   timelineId: string;
@@ -62,6 +63,9 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     resolveJobCompleted = resolve;
   });
 
+  const runId = Date.now().toString();
+  const jobId = randomUUID();
+
   const ctx: RunContext = {
     port,
     repoCtx: config.repoCtx,
@@ -78,11 +82,12 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     runnerArch: config.runnerArch || "ARM64",
     output,
 
+    runId: runId,
     sessionId: randomUUID(),
     planId: randomUUID(),
     timelineId: randomUUID(),
-    jobId: randomUUID(),
-    jwt: makeJwt(),
+    jobId: jobId,
+    jwt: makeJwt(runId, jobId),
 
     jobDispatched: false,
     jobDone: false,
@@ -92,7 +97,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
   return { ctx, jobCompleted };
 }
 
-function makeJwt(): string {
+function makeJwt(runId: string, jobId: string): string {
   const header = Buffer.from(
     JSON.stringify({ typ: "JWT", alg: "HS256" }),
   ).toString("base64url");
@@ -104,6 +109,7 @@ function makeJwt(): string {
       aud: "local",
       nbf: now,
       exp: now + 3600,
+      scp: `Actions.Results:${runId}:${jobId}`,
     }),
   ).toString("base64url");
   const sig = Buffer.from("localsignature").toString("base64url");
