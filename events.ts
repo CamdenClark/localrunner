@@ -209,8 +209,11 @@ export const EVENT_DEFINITIONS: EventDefinition[] = [
     ],
     supportsFilters: noFilters,
     generatePayload: (ctx) => entityPayload(ctx, "opened", "issue", {
-      number: 1, title: "Test issue", state: "open",
+      number: 1, title: "Test issue", body: "", state: "open",
       html_url: `${ctx.serverUrl}/${ctx.fullName}/issues/1`,
+      labels: [], assignees: [], comments: 0, locked: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       user: senderPayload(ctx),
     }),
   },
