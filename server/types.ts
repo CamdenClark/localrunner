@@ -96,6 +96,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     resolveJobCompleted,
   };
 
+  output.runId = runId;
   output.jobId = jobId;
 
   try {

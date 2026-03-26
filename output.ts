@@ -1,6 +1,6 @@
 import { getDb } from "./db";
-import { steps as stepsTable, stepLogs } from "./db/schema";
-import { eq } from "drizzle-orm";
+import { runs, jobs, steps as stepsTable, stepLogs } from "./db/schema";
+import { eq, isNull } from "drizzle-orm";
 
 export type OutputMode = "pretty" | "raw" | "verbose";
 
@@ -27,6 +27,7 @@ export class OutputHandler {
   currentStep: string | null = null;
   allLogs: string[] = [];
 
+  runId: string | null = null;
   jobId: string | null = null;
   private stepDbIds: Map<string, number> = new Map();
   private stepSortOrder = 0;
@@ -267,5 +268,38 @@ export class OutputHandler {
     for (const [name] of this.pendingLogs) {
       this.flushStepLogs(name);
     }
+  }
+
+  markCancelled(): void {
+    this.flushAllLogs();
+
+    if (!this.jobId || !this.runId) return;
+
+    try {
+      const db = getDb();
+      const now = Date.now();
+
+      // Mark incomplete steps as cancelled
+      for (const [name, step] of this.steps) {
+        if (!step.completedAt) {
+          const stepDbId = this.stepDbIds.get(name);
+          if (stepDbId) {
+            db.update(stepsTable)
+              .set({ conclusion: "cancelled", completedAt: now })
+              .where(eq(stepsTable.id, stepDbId))
+              .run();
+          }
+        }
+      }
+
+      db.update(jobs)
+        .set({ conclusion: "cancelled", completedAt: now })
+        .where(eq(jobs.id, this.jobId))
+        .run();
+      db.update(runs)
+        .set({ conclusion: "cancelled", completedAt: now })
+        .where(eq(runs.id, this.runId))
+        .run();
+    } catch {}
   }
 }

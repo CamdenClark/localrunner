@@ -199,6 +199,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
   }
 
   function onSignal() {
+    output.markCancelled();
     cleanup();
     process.exit(1);
   }
