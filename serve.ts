@@ -30,7 +30,7 @@ const runManager = new RunManager();
 const { app, addRunnerCatchAll } = createMultiRunApp(runManager);
 
 // Web UI and API routes (before runner catch-all)
-registerWebRoutes(app, runManager);
+registerWebRoutes(app, runManager, port);
 registerApiRoutes(app, runManager, port);
 
 // Runner protocol catch-all (must be last)

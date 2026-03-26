@@ -41,6 +41,13 @@ interface StepLog {
   content: string | null;
 }
 
+interface Artifact {
+  id: number;
+  name: string;
+  size: number;
+  finalized: number;
+}
+
 function badge(status: string | null, conclusion: string | null) {
   if (status === "completed" && conclusion) {
     return html`<span class="badge badge-${conclusion}">${conclusion}</span>`;
@@ -59,11 +66,23 @@ function duration(start: number | null, end: number | null): string {
   return `${Math.floor(elapsed / 60000)}m ${Math.floor((elapsed % 60000) / 1000)}s`;
 }
 
-export function runDetailPage(run: Run, jobs: Job[], steps: Step[], logs: StepLog[]) {
+function dotClass(status: string | null, conclusion: string | null): string {
+  if (status === "completed" && conclusion) return `dot-${conclusion}`;
+  if (status) return `dot-${status}`;
+  return "dot-queued";
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function runDetailPage(run: Run, jobs: Job[], steps: Step[], logs: StepLog[], artifacts: Artifact[]) {
   const isActive = run.status === "in_progress" || run.status === "queued";
 
   if (!isActive) {
-    return html`<div>${runDetailContent(run, jobs, steps, logs)}</div>`;
+    return html`<div>${runDetailContent(run, jobs, steps, logs, artifacts)}</div>`;
   }
 
   return html`
@@ -74,12 +93,12 @@ export function runDetailPage(run: Run, jobs: Job[], steps: Step[], logs: StepLo
       hx-trigger="sse:run_changed"
       hx-swap="innerHTML"
     >
-      ${runDetailContent(run, jobs, steps, logs)}
+      ${runDetailContent(run, jobs, steps, logs, artifacts)}
     </div>
   `;
 }
 
-export function runDetailContent(run: Run, jobs: Job[], steps: Step[], logs: StepLog[]) {
+export function runDetailContent(run: Run, jobs: Job[], steps: Step[], logs: StepLog[], artifacts: Artifact[]) {
   const logsByStep = new Map<number, StepLog[]>();
   for (const log of logs) {
     if (log.stepId == null) continue;
@@ -99,33 +118,66 @@ export function runDetailContent(run: Run, jobs: Job[], steps: Step[], logs: Ste
       </div>
     </div>
 
-    ${jobs.map((job) => {
-      const jobSteps = steps
-        .filter((s) => s.jobId === job.id)
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-
-      return html`
-        <div class="run-detail">
-          <h3>${job.name || "Job"} ${badge(job.status, job.conclusion)}</h3>
-
-          ${jobSteps.map((step) => {
-            const stepClass = step.conclusion || step.status || "";
-            const stepLogs = logsByStep.get(step.id) || [];
-            stepLogs.sort((a, b) => (a.lineNumber ?? 0) - (b.lineNumber ?? 0));
-
-            return html`
-              <div class="step step-${stepClass}">
-                <div class="step-name">${step.name || "Step"} ${badge(step.status, step.conclusion)}</div>
-                <div class="step-meta">${duration(step.startedAt, step.completedAt)}</div>
-                ${stepLogs.length > 0
-                  ? html`<div class="logs">${stepLogs.map((l) => html`<div class="log-line">${l.content || ""}</div>`)}</div>`
-                  : html``
-                }
-              </div>
-            `;
-          })}
+    <div class="run-layout">
+      <nav class="run-sidebar">
+        <div class="sidebar-section">
+          <h4>Jobs</h4>
+          ${jobs.map((job) => html`
+            <a class="sidebar-job" href="#job-${job.id}">
+              <span class="status-dot ${dotClass(job.status, job.conclusion)}"></span>
+              ${job.name || "Job"}
+            </a>
+          `)}
         </div>
-      `;
-    })}
+
+        ${artifacts.length > 0 ? html`
+          <div class="sidebar-section">
+            <h4>Artifacts</h4>
+            ${artifacts.map((a) => html`
+              <div class="sidebar-artifact">
+                <span>${a.name}</span>
+                <span class="artifact-size">${formatSize(a.size)}</span>
+              </div>
+            `)}
+          </div>
+        ` : html``}
+      </nav>
+
+      <div class="run-main">
+        ${jobs.map((job) => {
+          const jobSteps = steps
+            .filter((s) => s.jobId === job.id)
+            .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+          return html`
+            <div class="run-detail" id="job-${job.id}">
+              <h3>${job.name || "Job"} ${badge(job.status, job.conclusion)}</h3>
+
+              ${jobSteps.map((step) => {
+                const stepClass = step.conclusion || step.status || "";
+                const stepLogs = logsByStep.get(step.id as any) || [];
+                stepLogs.sort((a, b) => (a.lineNumber ?? 0) - (b.lineNumber ?? 0));
+
+                const collapsed = step.conclusion === "succeeded" || step.conclusion === "skipped";
+                return html`
+                  <div class="step step-${stepClass}${collapsed ? "" : " open"}" data-step-id="${step.id}">
+                    <div class="step-header">
+                      <span class="chevron">&#9654;</span>
+                      <span class="step-name">${step.name || "Step"}</span>
+                      ${badge(step.status, step.conclusion)}
+                      <span class="step-meta">${duration(step.startedAt, step.completedAt)}</span>
+                    </div>
+                    ${stepLogs.length > 0
+                      ? html`<div class="step-body"><div class="logs">${stepLogs.map((l) => html`<div class="log-line">${l.content || ""}</div>`)}</div></div>`
+                      : html``
+                    }
+                  </div>
+                `;
+              })}
+            </div>
+          `;
+        })}
+      </div>
+    </div>
   `;
 }
