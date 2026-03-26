@@ -291,7 +291,7 @@ async function main() {
     }
     console.log(`Steps: ${jobSteps.length}\n`);
 
-    const conclusion = await startRun({
+    const result = await startRun({
       port,
       repoCtx,
       jobSteps,
@@ -306,7 +306,7 @@ async function main() {
       services: selectedJob.services,
     });
 
-    if (conclusion !== "succeeded") {
+    if (result.conclusion !== "succeeded") {
       anyFailed = true;
     }
 

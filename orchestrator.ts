@@ -47,7 +47,12 @@ function buildJitConfig(port: number, hostAddress: string): string {
   return Buffer.from(jitPayload).toString("base64");
 }
 
-export async function startRun(config: RunConfig): Promise<string> {
+export interface RunResult {
+  conclusion: string;
+  logs: string[];
+}
+
+export async function startRun(config: RunConfig): Promise<RunResult> {
   const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, dockerImage, services } = config;
 
   const isDocker = !!dockerImage;
@@ -58,7 +63,7 @@ export async function startRun(config: RunConfig): Promise<string> {
   await Bun.write(join(tmpDir, "event.json"), JSON.stringify(eventPayload, null, 2));
 
   // Start the mock server
-  const { server, jobCompleted } = createServer({
+  const { server, jobCompleted, logs } = createServer({
     port,
     repoCtx,
     jobSteps,
@@ -168,8 +173,8 @@ export async function startRun(config: RunConfig): Promise<string> {
       "./run.sh", "--jitconfig", jitconfig,
     ];
     proc = Bun.spawn(dockerArgs, {
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: "pipe",
+      stderr: "pipe",
     });
   } else {
     const runnerScript = join(runnerDir, "run.sh");
@@ -180,10 +185,38 @@ export async function startRun(config: RunConfig): Promise<string> {
         GITHUB_ACTIONS_RUNNER_FORCE_GHES: "1",
         RUNNER_ALLOW_RUNASROOT: "1",
       },
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: "pipe",
+      stderr: "pipe",
     });
   }
+
+  // Stream runner output to console and collect in logs
+  async function pipeStream(stream: ReadableStream<Uint8Array> | null, prefix: string) {
+    if (!stream) return;
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const msg = `  [runner${prefix}] ${line}`;
+        console.log(msg);
+        logs.push(msg);
+      }
+    }
+    if (buffer) {
+      const msg = `  [runner${prefix}] ${buffer}`;
+      console.log(msg);
+      logs.push(msg);
+    }
+  }
+
+  const stdoutPipe = pipeStream(proc.stdout as ReadableStream<Uint8Array>, "");
+  const stderrPipe = pipeStream(proc.stderr as ReadableStream<Uint8Array>, ":err");
 
   // Wait for either job completion or runner exit
   const runnerExit = proc.exited;
@@ -192,6 +225,9 @@ export async function startRun(config: RunConfig): Promise<string> {
     jobCompleted,
     runnerExit.then(() => "failed" as string),
   ]);
+
+  // Wait for output streams to finish
+  await Promise.allSettled([stdoutPipe, stderrPipe]);
 
   // Give a moment for final logs to flush
   await new Promise((r) => setTimeout(r, 500));
@@ -220,5 +256,5 @@ export async function startRun(config: RunConfig): Promise<string> {
     // best effort cleanup
   }
 
-  return conclusion;
+  return { conclusion, logs };
 }

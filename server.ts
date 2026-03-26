@@ -23,6 +23,7 @@ export interface ServerConfig {
 export interface ServerHandle {
   server: ReturnType<typeof Bun.serve>;
   jobCompleted: Promise<string>;
+  logs: string[];
 }
 
 // --- Step builders ---
@@ -287,6 +288,12 @@ export function createServer(config: ServerConfig): ServerHandle {
 
   let jobDispatched = false;
   let jobDone = false;
+  const logs: string[] = [];
+
+  function log(message: string) {
+    console.log(message);
+    logs.push(message);
+  }
 
   let resolveJobCompleted: (conclusion: string) => void;
   const jobCompleted = new Promise<string>((resolve) => {
@@ -373,6 +380,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             },
             data: {
               CacheServerUrl: `${serverBaseUrl}/`,
+              FeedStreamUrl: `ws://${hostAddress}:${port}/feed`,
             },
             isShared: false,
             isReady: true,
@@ -416,6 +424,9 @@ export function createServer(config: ServerConfig): ServerHandle {
         "system.github.launch_endpoint": {
           value: serverBaseUrl,
         },
+        "system.github.results_endpoint": {
+          value: serverBaseUrl,
+        },
         ...Object.fromEntries(
           Object.entries(secrets || {}).map(([k, v]) => [`secrets.${k}`, { value: v, isSecret: true }]),
         ),
@@ -438,7 +449,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       // --- Auth & connection ---
       "/_apis/oauth2/token": {
         POST: () => {
-          console.log("[auth] Token request");
+          log("[auth] Token request");
           return Response.json({
             access_token: LOCAL_JWT,
             token_type: "Bearer",
@@ -448,7 +459,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       },
       "/_apis/connectionData": {
         GET: () => {
-          console.log("[connect] Connection data request");
+          log("[connect] Connection data request");
           return Response.json(buildConnectionData());
         },
       },
@@ -456,7 +467,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       // --- Session ---
       "/session": {
         POST: () => {
-          console.log("[session] Created");
+          log("[session] Created");
           return Response.json({
             sessionId: SESSION_ID,
             ownerName: "local",
@@ -465,7 +476,7 @@ export function createServer(config: ServerConfig): ServerHandle {
           });
         },
         DELETE: () => {
-          console.log("[session] Deleted");
+          log("[session] Deleted");
           return Response.json({});
         },
       },
@@ -475,7 +486,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         GET: () => {
           if (!jobDispatched) {
             jobDispatched = true;
-            console.log("[message] Dispatching job!");
+            log("[message] Dispatching job!");
             return Response.json({
               messageId: 1,
               messageType: "RunnerJobRequest",
@@ -502,7 +513,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       "/acknowledge": { POST: () => Response.json({}) },
       "/acquirejob": {
         POST: () => {
-          console.log("[job] Job acquired");
+          log("[job] Job acquired");
           return Response.json(buildJobMessage(jobSteps));
         },
       },
@@ -516,12 +527,12 @@ export function createServer(config: ServerConfig): ServerHandle {
           jobDone = true;
           const body = await req.json() as any;
           const conclusion = body.conclusion || "unknown";
-          console.log(`[job] Job completed (${conclusion})`);
+          log(`[job] Job completed (${conclusion})`);
           if (body.stepResults) {
             for (const step of body.stepResults) {
               if (step.name && step.conclusion) {
                 const icon = step.conclusion === "succeeded" ? "✓" : step.conclusion === "skipped" ? "○" : "✗";
-                console.log(`  ${icon} ${step.name}: ${step.conclusion}`);
+                log(`  ${icon} ${step.name}: ${step.conclusion}`);
               }
             }
           }
@@ -536,11 +547,11 @@ export function createServer(config: ServerConfig): ServerHandle {
           const url = new URL(req.url);
           const keys = url.searchParams.get("keys")?.split(",") || [];
           const version = url.searchParams.get("version") || "";
-          console.log(`[cache] Lookup keys=${keys.join(",")} version=${version.slice(0, 12)}`);
+          log(`[cache] Lookup keys=${keys.join(",")} version=${version.slice(0, 12)}`);
 
           const found = findCache(keys, version);
           if (found) {
-            console.log(`[cache] Hit: ${found.entry.key} (id=${found.cacheId})`);
+            log(`[cache] Hit: ${found.entry.key} (id=${found.cacheId})`);
             return Response.json({
               result: "hit",
               cacheId: found.cacheId,
@@ -550,7 +561,7 @@ export function createServer(config: ServerConfig): ServerHandle {
               archiveLocation: `${serverBaseUrl}/_apis/artifactcache/download/${found.cacheId}`,
             });
           }
-          console.log("[cache] Miss");
+          log("[cache] Miss");
           return new Response(null, { status: 204 });
         },
       },
@@ -558,7 +569,7 @@ export function createServer(config: ServerConfig): ServerHandle {
         GET: (req) => {
           const cacheId = parseInt(req.params.id);
           const filePath = cacheEntryPath(cacheId);
-          console.log(`[cache] Download id=${cacheId}`);
+          log(`[cache] Download id=${cacheId}`);
           if (existsSync(filePath)) {
             const file = Bun.file(filePath);
             return new Response(file, {
@@ -584,7 +595,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             createdAt: new Date().toISOString(),
           };
           await Bun.write(cacheMetaPath(cacheId), JSON.stringify(entry));
-          console.log(`[cache] Reserved id=${cacheId} key=${body.key}`);
+          log(`[cache] Reserved id=${cacheId} key=${body.key}`);
           return Response.json({ cacheId });
         },
       },
@@ -594,7 +605,7 @@ export function createServer(config: ServerConfig): ServerHandle {
           const data = await req.arrayBuffer();
           const filePath = cacheEntryPath(cacheId);
           const contentRange = req.headers.get("Content-Range");
-          console.log(`[cache] Upload id=${cacheId} size=${data.byteLength} range=${contentRange || "full"}`);
+          log(`[cache] Upload id=${cacheId} size=${data.byteLength} range=${contentRange || "full"}`);
 
           if (contentRange) {
             const match = contentRange.match(/bytes (\d+)-(\d+)\//);
@@ -640,7 +651,7 @@ export function createServer(config: ServerConfig): ServerHandle {
             }
 
             await Bun.write(metaPath, JSON.stringify(meta));
-            console.log(`[cache] Committed id=${cacheId} key=${meta.key} size=${meta.size}`);
+            log(`[cache] Committed id=${cacheId} key=${meta.key} size=${meta.size}`);
           }
           return new Response(null, { status: 204 });
         },
@@ -652,7 +663,7 @@ export function createServer(config: ServerConfig): ServerHandle {
       const path = url.pathname;
       const method = req.method;
 
-      console.log(`[${method}] ${path}${url.search}`);
+      log(`[${method}] ${path}${url.search}`);
 
       // Runner resolve actions (wildcard path with plan/job IDs)
       if (method === "POST" && path.includes("/runnerresolve/actions")) {
@@ -672,20 +683,19 @@ export function createServer(config: ServerConfig): ServerHandle {
           return Response.json({ id: TIMELINE_ID, changeId: 1, records: [] });
         }
         if (method === "PATCH") {
-          req.json().then((body: any) => {
-            const records = body.value || body;
-            if (Array.isArray(records)) {
-              for (const record of records) {
-                if (record.name && record.state !== undefined) {
-                  const states = ["Pending", "InProgress", "Completed"];
-                  const results = ["Succeeded", "SucceededWithIssues", "Failed", "Cancelled", "Skipped", "Abandoned"];
-                  const state = states[record.state] || record.state;
-                  const result = record.result != null ? results[record.result] || record.result : "";
-                  console.log(`  [step] ${record.name}: ${state}${result ? ` (${result})` : ""}`);
-                }
+          const body = await req.json() as any;
+          const records = body.value || body;
+          if (Array.isArray(records)) {
+            for (const record of records) {
+              if (record.name && record.state !== undefined) {
+                const states = ["Pending", "InProgress", "Completed"];
+                const results = ["Succeeded", "SucceededWithIssues", "Failed", "Cancelled", "Skipped", "Abandoned"];
+                const state = states[record.state] || record.state;
+                const result = record.result != null ? results[record.result] || record.result : "";
+                log(`  [step] ${record.name}: ${state}${result ? ` (${result})` : ""}`);
               }
             }
-          });
+          }
           return Response.json({ changeId: 2, records: [] });
         }
         if (method === "GET") {
@@ -696,42 +706,119 @@ export function createServer(config: ServerConfig): ServerHandle {
       // Log uploads
       if (path.includes("/logs")) {
         if (method === "POST" && path.match(/\/logs\/\d+/)) {
-          req.text().then((text) => {
-            for (const line of text.split("\n")) {
-              if (line.trim()) console.log(`  [log] ${line.trim()}`);
-            }
-          });
+          const text = await req.text();
+          for (const line of text.split("\n")) {
+            if (line.trim()) log(`  [log] ${line.trim()}`);
+          }
         }
         return Response.json({ id: 1, path: "logs/1" });
       }
 
-      // Feed
+      // Feed - WebSocket upgrade
       if (path.includes("/feed")) {
-        req.text().then((text) => {
-          for (const line of text.split("\n")) {
-            if (line.trim()) console.log(`  [feed] ${line.trim()}`);
-          }
-        });
+        if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+          const upgraded = server.upgrade(req);
+          if (upgraded) return undefined as any;
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }
+        const text = await req.text();
+        for (const line of text.split("\n")) {
+          if (line.trim()) log(`  [feed] ${line.trim()}`);
+        }
         return Response.json({});
+      }
+
+      // Results API - Twirp endpoints
+      if (path.startsWith("/twirp/")) {
+        const body = await req.json() as any;
+
+        // Step updates
+        if (path.includes("WorkflowStepsUpdate")) {
+          const statusNames: Record<number, string> = { 0: "Unknown", 3: "InProgress", 5: "Pending", 6: "Completed" };
+          const conclusionNames: Record<number, string> = { 0: "Unknown", 2: "Success", 3: "Failure", 4: "Cancelled", 7: "Skipped" };
+          if (body.steps) {
+            for (const step of body.steps) {
+              const status = statusNames[step.status] || step.status;
+              const conclusion = step.conclusion ? conclusionNames[step.conclusion] || step.conclusion : "";
+              if (step.name) {
+                const icon = step.conclusion === 2 ? "✓" : step.conclusion === 7 ? "○" : step.conclusion ? "✗" : "▶";
+                log(`  [step] ${icon} ${step.name}: ${status}${conclusion ? ` (${conclusion})` : ""}`);
+              }
+            }
+          }
+          return Response.json({ stepsResult: [] });
+        }
+
+        // Log upload URL requests - return a URL pointing back to our server
+        if (path.includes("SignedBlobURL")) {
+          const blobId = randomUUID();
+          return Response.json({
+            url: `${serverBaseUrl}/_blob/${blobId}`,
+            blob_storage_type: "BLOB_STORAGE_TYPE_AZURE",
+            soft_size_limit: 104857600,
+          });
+        }
+
+        // Log metadata creation
+        if (path.includes("Metadata")) {
+          return Response.json({ ok: true });
+        }
+
+        log(`[twirp] ${path}`);
+        return Response.json({});
+      }
+
+      // Blob upload endpoint (for Results API log uploads)
+      if (path.startsWith("/_blob/")) {
+        if (method === "PUT" || method === "PATCH" || method === "POST") {
+          const text = await req.text();
+          for (const line of text.split("\n")) {
+            if (line.trim()) log(`  [log] ${line.trim()}`);
+          }
+        }
+        return new Response(null, { status: 201, headers: { "x-ms-request-id": randomUUID() } });
       }
 
       // Events
       if (path.includes("/events")) {
-        req.json().then((body: any) => {
-          console.log(`[event] ${body.name || "unknown"}`);
-        });
+        const body = await req.json() as any;
+        log(`[event] ${body.name || "unknown"}`);
         return Response.json({});
       }
 
-      console.log(`[unhandled] ${method} ${path}`);
+      log(`[unhandled] ${method} ${path}`);
       return Response.json({});
+    },
+
+    websocket: {
+      open(ws) {
+        log("[feed] WebSocket connected");
+      },
+      message(ws, message) {
+        try {
+          const data = JSON.parse(typeof message === "string" ? message : new TextDecoder().decode(message));
+          if (data.value && Array.isArray(data.value)) {
+            for (const line of data.value) {
+              if (typeof line === "string" && line.trim()) {
+                log(`  [log] ${line.trim()}`);
+              }
+            }
+          }
+        } catch {
+          const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+          if (text.trim()) log(`  [feed] ${text.trim()}`);
+        }
+      },
+      close(ws) {
+        log("[feed] WebSocket closed");
+      },
     },
   });
 
-  console.log(`Local Actions server listening on http://localhost:${port}`);
-  console.log(`Session: ${SESSION_ID}`);
-  console.log(`Job: ${JOB_ID}`);
-  console.log("Waiting for runner to connect...\n");
+  log(`Local Actions server listening on http://localhost:${port}`);
+  log(`Session: ${SESSION_ID}`);
+  log(`Job: ${JOB_ID}`);
+  log("Waiting for runner to connect...\n");
 
-  return { server, jobCompleted };
+  return { server, jobCompleted, logs };
 }
