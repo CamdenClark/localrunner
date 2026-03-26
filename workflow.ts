@@ -141,10 +141,16 @@ export function matchesEvent(workflow: Workflow, eventName: string): boolean {
 
 export function workflowStepsToRunnerSteps(
   steps: Step[],
-  scriptStep: (script: string, displayName?: string) => object,
-  actionStep: (action: string, ref: string, displayName?: string, inputs?: Record<string, string>) => object,
+  scriptStep: (script: string, displayName?: string, opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string> }) => object,
+  actionStep: (action: string, ref: string, displayName?: string, inputs?: Record<string, string>, opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string> }) => object,
 ): object[] {
   return steps.map((step) => {
+    const opts = {
+      condition: step.if,
+      continueOnError: step["continue-on-error"] === true || step["continue-on-error"] === "true",
+      environment: step.env,
+    };
+
     if (step.uses) {
       // Parse action reference: owner/repo@ref or owner/repo/path@ref
       const atIndex = step.uses.lastIndexOf("@");
@@ -161,11 +167,11 @@ export function workflowStepsToRunnerSteps(
           )
         : undefined;
 
-      return actionStep(actionPath, ref, step.name, inputs);
+      return actionStep(actionPath, ref, step.name, inputs, opts);
     }
 
     if (step.run) {
-      return scriptStep(step.run, step.name);
+      return scriptStep(step.run, step.name, opts);
     }
 
     throw new Error(`Step must have either 'uses' or 'run': ${JSON.stringify(step)}`);

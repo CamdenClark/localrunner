@@ -1,8 +1,23 @@
 import { randomUUID } from "crypto";
 
+export interface StepOptions {
+  condition?: string;
+  continueOnError?: boolean;
+  environment?: Record<string, string>;
+}
+
+// If condition contains a status function, use as-is; otherwise wrap with success()
+function resolveCondition(ifExpr?: string): string {
+  if (!ifExpr) return "success()";
+  const statusFunctions = /\b(success|failure|always|cancelled)\s*\(/;
+  if (statusFunctions.test(ifExpr)) return ifExpr;
+  return `success() && (${ifExpr})`;
+}
+
 export function scriptStep(
   script: string,
   displayName?: string,
+  opts?: StepOptions,
 ): object {
   return {
     type: "Action",
@@ -11,7 +26,11 @@ export function scriptStep(
     name: "__run",
     displayName: displayName || `Run ${script.slice(0, 40)}`,
     contextName: `run_${randomUUID().slice(0, 8)}`,
-    condition: "success()",
+    condition: resolveCondition(opts?.condition),
+    continueOnError: opts?.continueOnError ?? false,
+    environment: opts?.environment
+      ? { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) }
+      : { type: 2, map: [] },
     inputs: {
       type: 2,
       map: [{ Key: "script", Value: script }],
@@ -24,6 +43,7 @@ export function actionStep(
   ref: string,
   displayName?: string,
   inputs?: Record<string, string>,
+  opts?: StepOptions,
 ): object {
   const inputMap = inputs
     ? Object.entries(inputs).map(([k, v]) => ({ Key: k, Value: v }))
@@ -50,7 +70,11 @@ export function actionStep(
     name: action,
     displayName: displayName || `Run ${action}@${ref}`,
     contextName: action.replace(/[^a-zA-Z0-9]/g, "_"),
-    condition: "success()",
+    condition: resolveCondition(opts?.condition),
+    continueOnError: opts?.continueOnError ?? false,
+    environment: opts?.environment
+      ? { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) }
+      : { type: 2, map: [] },
     inputs: {
       type: 2,
       map: inputMap,
