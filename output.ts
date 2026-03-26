@@ -29,6 +29,7 @@ export class OutputHandler {
 
   runId: string | null = null;
   jobId: string | null = null;
+  jobCompleted = false;
   private stepDbIds: Map<string, number> = new Map();
   private stepSortOrder = 0;
   private pendingLogs: Map<string, { stepId: number; lines: string[] }> = new Map();
@@ -38,6 +39,9 @@ export class OutputHandler {
   }
 
   emit(event: RunEvent): void {
+    if (event.type === "job_complete") {
+      this.jobCompleted = true;
+    }
     switch (this.mode) {
       case "verbose":
         this.emitVerbose(event);
