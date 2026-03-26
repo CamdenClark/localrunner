@@ -183,6 +183,7 @@ async function resolveActions(
 // --- Cache storage ---
 
 const CACHE_DIR = join(homedir(), ".localrunner", "cache");
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface CacheEntry {
   key: string;
@@ -206,6 +207,29 @@ function cacheMetaPath(cacheId: number): string {
   return join(getCacheDir(), `cache-${cacheId}.json`);
 }
 
+function isCacheExpired(entry: CacheEntry): boolean {
+  return Date.now() - new Date(entry.createdAt).getTime() > CACHE_TTL_MS;
+}
+
+function removeCacheEntry(cacheId: number): void {
+  try { unlinkSync(cacheEntryPath(cacheId)); } catch {}
+  try { unlinkSync(cacheMetaPath(cacheId)); } catch {}
+}
+
+function evictExpiredCaches(): void {
+  const dir = getCacheDir();
+  for (const f of readdirSync(dir).filter(f => f.endsWith(".json"))) {
+    try {
+      const meta: CacheEntry = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      if (isCacheExpired(meta)) {
+        const cacheId = parseInt(f.replace("cache-", "").replace(".json", ""));
+        removeCacheEntry(cacheId);
+        console.log(`[cache] Evicted expired entry: ${meta.key}`);
+      }
+    } catch {}
+  }
+}
+
 function findCache(keys: string[], version: string): { cacheId: number; entry: CacheEntry } | null {
   const dir = getCacheDir();
   const metaFiles = readdirSync(dir).filter(f => f.endsWith(".json"));
@@ -215,7 +239,8 @@ function findCache(keys: string[], version: string): { cacheId: number; entry: C
     for (const metaFile of metaFiles) {
       try {
         const meta: CacheEntry = JSON.parse(readFileSync(join(dir, metaFile), "utf8"));
-        if (meta.committed && meta.key === key && meta.version === version) {
+        if (!meta.committed || isCacheExpired(meta)) continue;
+        if (meta.key === key && meta.version === version) {
           const cacheId = parseInt(metaFile.replace("cache-", "").replace(".json", ""));
           return { cacheId, entry: meta };
         }
@@ -230,7 +255,8 @@ function findCache(keys: string[], version: string): { cacheId: number; entry: C
     for (const metaFile of metaFiles) {
       try {
         const meta: CacheEntry = JSON.parse(readFileSync(join(dir, metaFile), "utf8"));
-        if (meta.committed && meta.key.startsWith(key) && meta.version === version) {
+        if (!meta.committed || isCacheExpired(meta)) continue;
+        if (meta.key.startsWith(key) && meta.version === version) {
           const cacheId = parseInt(metaFile.replace("cache-", "").replace(".json", ""));
           return { cacheId, entry: meta };
         }
@@ -286,6 +312,9 @@ export function createServer(config: ServerConfig): ServerHandle {
   }
 
   const LOCAL_JWT = makeJwt();
+
+  // Clean up expired cache entries on startup
+  evictExpiredCaches();
 
   function buildConnectionData(): object {
     return {
@@ -605,8 +634,7 @@ export function createServer(config: ServerConfig): ServerHandle {
                 const existing: CacheEntry = JSON.parse(readFileSync(fPath, "utf8"));
                 if (existing.key === meta.key && existing.version === meta.version) {
                   const oldId = parseInt(f.replace("cache-", "").replace(".json", ""));
-                  try { unlinkSync(cacheEntryPath(oldId)); } catch {}
-                  try { unlinkSync(fPath); } catch {}
+                  removeCacheEntry(oldId);
                 }
               } catch {}
             }
