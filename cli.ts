@@ -494,12 +494,12 @@ async function main() {
 
       const jobSteps = workflowStepsToRunnerSteps(
         selectedJob.steps,
-        (script, displayName) => scriptStep(evaluateExpressions(script, exprCtx), displayName),
-        (action, ref, displayName, inputs) => {
+        (script, displayName, condition) => scriptStep(evaluateExpressions(script, exprCtx), displayName, condition),
+        (action, ref, displayName, inputs, condition) => {
           const evaluated = inputs
             ? Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
             : undefined;
-          return actionStep(action, ref, displayName, evaluated);
+          return actionStep(action, ref, displayName, evaluated, condition);
         },
       );
       const serviceNames = selectedJob.services ? Object.keys(selectedJob.services) : [];

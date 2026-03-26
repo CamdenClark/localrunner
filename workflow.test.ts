@@ -168,4 +168,102 @@ describe("workflowStepsToRunnerSteps", () => {
     const steps = [{ uses: "actions/checkout" }];
     expect(() => workflowStepsToRunnerSteps(steps, scriptStep, actionStep)).toThrow("missing @version");
   });
+
+  test("passes through if condition to script step", () => {
+    const steps = [{ run: "echo hello", if: "github.event_name == 'push'" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("success() && (github.event_name == 'push')");
+  });
+
+  test("passes through if condition to action step", () => {
+    const steps = [{ uses: "actions/checkout@v4", if: "github.ref == 'refs/heads/main'" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("success() && (github.ref == 'refs/heads/main')");
+  });
+
+  test("defaults to success() when no if condition", () => {
+    const steps = [{ run: "echo hello" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("success()");
+  });
+
+  test("does not wrap condition that already contains status function", () => {
+    const steps = [{ run: "echo hello", if: "always()" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("always()");
+  });
+
+  test("does not wrap condition with failure()", () => {
+    const steps = [{ run: "echo failed", if: "failure()" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("failure()");
+  });
+
+  test("does not wrap condition with cancelled()", () => {
+    const steps = [{ run: "echo cancelled", if: "cancelled()" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("cancelled()");
+  });
+
+  test("does not wrap compound condition containing success()", () => {
+    const steps = [{ run: "echo hello", if: "success() && github.ref == 'refs/heads/main'" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("success() && github.ref == 'refs/heads/main'");
+  });
+
+  test("wraps boolean true condition", () => {
+    const steps = [{ run: "echo hello", if: "true" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("success() && (true)");
+  });
+
+  test("wraps boolean false condition", () => {
+    const steps = [{ run: "echo hello", if: "false" }];
+    const result = workflowStepsToRunnerSteps(steps, scriptStep, actionStep);
+    expect((result[0] as any).condition).toBe("success() && (false)");
+  });
+});
+
+describe("parseWorkflow if conditions", () => {
+  test("parses step with string if condition", () => {
+    const yaml = `
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello
+        if: github.event_name == 'push'
+`;
+    const w = parseWorkflow(yaml);
+    expect(w.jobs.build.steps![0].if).toBe("github.event_name == 'push'");
+  });
+
+  test("parses step with boolean true if condition", () => {
+    const yaml = `
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello
+        if: true
+`;
+    const w = parseWorkflow(yaml);
+    expect(w.jobs.build.steps![0].if).toBe("true");
+  });
+
+  test("parses step with boolean false if condition", () => {
+    const yaml = `
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello
+        if: false
+`;
+    const w = parseWorkflow(yaml);
+    expect(w.jobs.build.steps![0].if).toBe("false");
+  });
 });

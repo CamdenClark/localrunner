@@ -11,7 +11,7 @@ const StepSchema = z.object({
   name: z.string().optional(),
   with: z.record(z.any()).optional(),
   env: EnvSchema.optional(),
-  if: z.string().optional(),
+  if: z.union([z.string(), z.boolean()]).transform(v => v === undefined ? undefined : String(v)).optional(),
   id: z.string().optional(),
   "continue-on-error": z.union([z.boolean(), z.string()]).optional(),
   "timeout-minutes": z.union([z.number(), z.string()]).optional(),
@@ -139,12 +139,27 @@ export function matchesEvent(workflow: Workflow, eventName: string): boolean {
 
 // --- Convert parsed workflow steps to runner protocol format ---
 
+// Normalize step `if` condition for the runner protocol.
+// GitHub Actions wraps conditions in `success() && (...)` unless they
+// already reference a status check function (success, failure, always, cancelled).
+function normalizeCondition(ifExpr: string | undefined): string | undefined {
+  if (ifExpr === undefined) return undefined;
+
+  const statusFunctions = /\b(success|failure|always|cancelled)\s*\(/;
+  if (statusFunctions.test(ifExpr)) {
+    return ifExpr;
+  }
+  return `success() && (${ifExpr})`;
+}
+
 export function workflowStepsToRunnerSteps(
   steps: Step[],
-  scriptStep: (script: string, displayName?: string) => object,
-  actionStep: (action: string, ref: string, displayName?: string, inputs?: Record<string, string>) => object,
+  scriptStep: (script: string, displayName?: string, condition?: string) => object,
+  actionStep: (action: string, ref: string, displayName?: string, inputs?: Record<string, string>, condition?: string) => object,
 ): object[] {
   return steps.map((step) => {
+    const condition = normalizeCondition(step.if);
+
     if (step.uses) {
       // Parse action reference: owner/repo@ref or owner/repo/path@ref
       const atIndex = step.uses.lastIndexOf("@");
@@ -161,11 +176,11 @@ export function workflowStepsToRunnerSteps(
           )
         : undefined;
 
-      return actionStep(actionPath, ref, step.name, inputs);
+      return actionStep(actionPath, ref, step.name, inputs, condition);
     }
 
     if (step.run) {
-      return scriptStep(step.run, step.name);
+      return scriptStep(step.run, step.name, condition);
     }
 
     throw new Error(`Step must have either 'uses' or 'run': ${JSON.stringify(step)}`);
