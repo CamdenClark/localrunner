@@ -60,7 +60,7 @@ Flags:
   --secret-file <path>      Path to .env-style secrets file (default: .secrets)
   --var <KEY=VAL>            Variable
   --var-file <path>          Path to .env-style vars file (default: .vars)
-  -e, --eventpath <path>    Path to event payload JSON file
+  -e, --eventpath <path>    Path to event payload JSON (merges with defaults, e.g. {"action": "labeled"})
   -l, --list                List matching workflows and exit
   --local                    Run with local runner instead of Docker (default: Docker)
   --image <name>             Docker image override for all jobs
@@ -79,7 +79,8 @@ Examples:
   localrunner push -l                            # list push workflows
   localrunner push -W .github/workflows/ci.yml   # specific workflow
   localrunner push -s MY_SECRET=foo              # with secret
-  localrunner push --matrix node:18              # filter matrix`);
+  localrunner push --matrix node:18              # filter matrix
+  localrunner pull_request --help                 # show event activity types & sample payload`);
 }
 
 if (values.help && positionals[0]) {
