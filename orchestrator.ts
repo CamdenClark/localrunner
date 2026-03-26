@@ -5,6 +5,7 @@ import type { Service } from "./workflow";
 import { OutputHandler } from "./output";
 import type { RunContext } from "./server/types";
 import type { RunManager } from "./server/runs";
+import { detectOs, detectArch } from "./platform";
 
 export interface RunConfig {
   port: number;
@@ -301,8 +302,8 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     variables,
     matrix,
     hostAddress,
-    runnerOs: isDocker ? "Linux" : "macOS",
-    runnerArch: isDocker ? "X64" : "ARM64",
+    runnerOs: isDocker ? "Linux" : detectOs(),
+    runnerArch: isDocker ? "X64" : detectArch(),
     output: configOutput,
   });
 
@@ -383,8 +384,8 @@ export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResu
         variables,
         matrix,
         hostAddress,
-        runnerOs: isDocker ? "Linux" : "macOS",
-        runnerArch: isDocker ? "X64" : "ARM64",
+        runnerOs: isDocker ? "Linux" : detectOs(),
+        runnerArch: isDocker ? "X64" : detectArch(),
       },
     }),
   });

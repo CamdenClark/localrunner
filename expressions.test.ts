@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { evaluateExpressions, buildExpressionContext } from "./expressions";
 import type { RepoContext } from "./context";
+import { detectOs, detectArch } from "./platform";
 
 // Helper to build expression strings without triggering JS template parsing
 function expr(name: string): string {
@@ -188,12 +189,18 @@ describe("buildExpressionContext", () => {
     expect(ctx["github.ref_name"]).toBe("v1.0.0");
   });
 
-  test("populates runner context", () => {
+  test("populates runner context with detected values", () => {
     const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "job");
-    expect(ctx["runner.os"]).toBe("macOS");
-    expect(ctx["runner.arch"]).toBe("ARM64");
+    expect(ctx["runner.os"]).toBe(detectOs());
+    expect(ctx["runner.arch"]).toBe(detectArch());
     expect(ctx["runner.name"]).toBe("local-runner");
     expect(ctx["runner.temp"]).toBe("/tmp");
+  });
+
+  test("populates runner context with explicit values", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "job", undefined, undefined, undefined, undefined, { os: "Linux", arch: "X64" });
+    expect(ctx["runner.os"]).toBe("Linux");
+    expect(ctx["runner.arch"]).toBe("X64");
   });
 
   test("flattens event payload into github.event.*", () => {
@@ -391,7 +398,7 @@ describe("expression evaluation integration", () => {
     });
     const input =
       "node " + expr("env.NODE_VERSION") + " on " + expr("runner.os");
-    expect(evaluateExpressions(input, ctx)).toBe("node 20 on macOS");
+    expect(evaluateExpressions(input, ctx)).toBe(`node 20 on ${detectOs()}`);
   });
 
   test("evaluates secrets expressions", () => {

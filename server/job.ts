@@ -141,7 +141,7 @@ function buildJobMessage(ctx: RunContext): object {
           { k: "arch", v: ctx.runnerArch },
           { k: "name", v: "local-runner" },
           { k: "tool_cache", v: "" },
-          { k: "temp", v: "/tmp" },
+          { k: "temp", v: ctx.runnerOs === "Windows" ? (process.env["TEMP"] || "C:\\Windows\\Temp") : "/tmp" },
           { k: "workspace", v: "" },
           { k: "debug", v: "" },
         ],

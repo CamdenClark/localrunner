@@ -3,6 +3,7 @@ import type { RepoContext } from "../context";
 import { OutputHandler } from "../output";
 import { getDb } from "../db";
 import { runs, jobs } from "../db/schema";
+import { detectOs, detectArch } from "../platform";
 
 export interface ServerConfig {
   port: number;
@@ -86,8 +87,8 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     matrix: config.matrix || {},
     hostAddress,
     serverBaseUrl,
-    runnerOs: config.runnerOs || "macOS",
-    runnerArch: config.runnerArch || "ARM64",
+    runnerOs: config.runnerOs || detectOs(),
+    runnerArch: config.runnerArch || detectArch(),
     output,
 
     runId: runId,
