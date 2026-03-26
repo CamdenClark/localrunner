@@ -1,4 +1,5 @@
 import type { RepoContext } from "./context";
+import { detectOs, detectArch } from "./platform";
 
 // Build a flat lookup table for ${{ expr }} evaluation
 export function buildExpressionContext(
@@ -11,6 +12,7 @@ export function buildExpressionContext(
   secrets?: Record<string, string>,
   variables?: Record<string, string>,
   matrix?: Record<string, string>,
+  runnerInfo?: { os: string; arch: string },
 ): Record<string, string> {
   const ctx: Record<string, string> = {};
 
@@ -46,10 +48,12 @@ export function buildExpressionContext(
   ctx["github.retention_days"] = "90";
 
   // runner context
-  ctx["runner.os"] = "macOS";
-  ctx["runner.arch"] = "ARM64";
+  const runnerOs = runnerInfo?.os ?? detectOs();
+  const runnerArch = runnerInfo?.arch ?? detectArch();
+  ctx["runner.os"] = runnerOs;
+  ctx["runner.arch"] = runnerArch;
   ctx["runner.name"] = "local-runner";
-  ctx["runner.temp"] = "/tmp";
+  ctx["runner.temp"] = runnerOs === "Windows" ? (process.env["TEMP"] || "C:\\Windows\\Temp") : "/tmp";
   ctx["runner.tool_cache"] = "";
   ctx["runner.workspace"] = "";
   ctx["runner.debug"] = "";

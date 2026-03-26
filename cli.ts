@@ -12,6 +12,7 @@ import { resolveVariables } from "./variables";
 import { existsSync } from "fs";
 import { OutputHandler, type OutputMode } from "./output";
 import { expandMatrix, filterMatrix, formatMatrixCombo } from "./matrix";
+import { detectOs, detectArch } from "./platform";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -486,7 +487,10 @@ async function main() {
       }
 
       // Build expression context and convert steps
-      const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName, undefined, secrets, variables, hasMatrix ? matrixCombo : undefined);
+      const isDocker = !!dockerImage;
+      const runnerOs = isDocker ? "Linux" : detectOs();
+      const runnerArch = isDocker ? "X64" : detectArch();
+      const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName, undefined, secrets, variables, hasMatrix ? matrixCombo : undefined, { os: runnerOs, arch: runnerArch });
 
       const jobSteps = workflowStepsToRunnerSteps(
         selectedJob.steps,
