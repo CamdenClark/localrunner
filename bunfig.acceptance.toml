@@ -1,0 +1,5 @@
+[test]
+# Acceptance tests: end-to-end tests in acceptance/
+root = "acceptance"
+pathIgnorePatterns = ["runner/**"]
+timeout = 300000

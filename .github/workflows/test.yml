@@ -11,4 +11,4 @@ jobs:
       - name: Install dependencies
         run: bun install
       - name: Run unit tests
-        run: bun test ./*.test.ts
+        run: bun test
