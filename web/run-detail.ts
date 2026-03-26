@@ -61,10 +61,19 @@ function duration(start: number | null, end: number | null): string {
 
 export function runDetailPage(run: Run, jobs: Job[], steps: Step[], logs: StepLog[]) {
   const isActive = run.status === "in_progress" || run.status === "queued";
-  const pollAttr = isActive ? `hx-get="/partials/runs/${run.id}" hx-trigger="every 2s" hx-swap="innerHTML"` : "";
+
+  if (!isActive) {
+    return html`<div>${runDetailContent(run, jobs, steps, logs)}</div>`;
+  }
 
   return html`
-    <div ${pollAttr}>
+    <div
+      hx-ext="sse"
+      sse-connect="/sse/runs/${run.id}"
+      hx-get="/partials/runs/${run.id}"
+      hx-trigger="sse:run_changed"
+      hx-swap="innerHTML"
+    >
       ${runDetailContent(run, jobs, steps, logs)}
     </div>
   `;

@@ -81,8 +81,10 @@ export function runsTable(runs: Run[]) {
 export function runsPage(runs: Run[]) {
   return html`
     <div
+      hx-ext="sse"
+      sse-connect="/sse/runs"
       hx-get="/partials/runs"
-      hx-trigger="every 3s"
+      hx-trigger="sse:run_changed"
       hx-swap="innerHTML"
     >
       ${runsTable(runs)}

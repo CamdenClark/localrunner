@@ -9,6 +9,7 @@ export function layout(title: string, content: HtmlEscapedString) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title} — localrunner</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
