@@ -3,7 +3,7 @@ import { parseArgs } from "util";
 import { join, resolve, basename } from "path";
 import { getRepoContext } from "./context";
 import { parseWorkflow, matchesEvent, normalizeOn, workflowStepsToRunnerSteps } from "./workflow";
-import { generateEventPayload } from "./events";
+import { generateEventPayload, EVENT_DEFINITIONS, EVENT_REGISTRY } from "./events";
 import { scriptStep, actionStep } from "./server/index";
 import { startRun } from "./orchestrator";
 import { buildExpressionContext, evaluateExpressions } from "./expressions";
@@ -29,6 +29,7 @@ const { values, positionals } = parseArgs({
     port: { type: "string", default: "9637" },
     raw: { type: "boolean" },
     verbose: { type: "boolean", short: "v" },
+    "list-events": { type: "boolean" },
     help: { type: "boolean", short: "h" },
   },
   allowPositionals: true,
@@ -36,10 +37,19 @@ const { values, positionals } = parseArgs({
 });
 
 function printUsage() {
+  const common = ["push", "pull_request", "pull_request_target", "workflow_dispatch", "issues", "release", "schedule"];
+  const eventLines = common
+    .map((name) => EVENT_REGISTRY.get(name))
+    .filter(Boolean)
+    .map((def) => `  ${def!.name.padEnd(26)} ${def!.description}${def!.name === "push" ? " (default)" : ""}`)
+    .join("\n");
+
   console.log(`Usage: localrunner [event] [flags]
 
 Events:
-  push (default), pull_request, workflow_dispatch, etc.
+${eventLines}
+
+  Use --list-events to see all ${EVENT_REGISTRY.size} supported events.
 
 Flags:
   -W, --workflows <path>    Workflow file or directory (default: .github/workflows/)
@@ -68,13 +78,98 @@ Examples:
   localrunner push -s MY_SECRET=foo              # with secret`);
 }
 
+if (values.help && positionals[0]) {
+  // Event-specific help: bun cli.ts push --help
+  const name = positionals[0];
+  const def = EVENT_REGISTRY.get(name);
+  if (!def) {
+    console.error(`Unknown event: '${name}'. Run --list-events to see all supported events.`);
+    process.exit(1);
+  }
+
+  console.log(`Event: ${def.name}`);
+  console.log(`  ${def.description}\n`);
+
+  if (def.validActions.length > 0) {
+    console.log(`Activity types: ${def.validActions.join(", ")}`);
+    console.log(`Default: ${def.defaultAction}\n`);
+  }
+
+  const filters: string[] = [];
+  if (def.supportsFilters.branches) filters.push("branches");
+  if (def.supportsFilters.paths) filters.push("paths");
+  if (def.supportsFilters.tags) filters.push("tags");
+  if (filters.length > 0) {
+    console.log(`Filters: ${filters.join(", ")}\n`);
+  }
+
+  console.log(`Workflow usage:`);
+  if (def.validActions.length > 0) {
+    console.log(`  on:`);
+    console.log(`    ${def.name}:`);
+    console.log(`      types: [${def.validActions.slice(0, 3).join(", ")}]`);
+  } else {
+    console.log(`  on: [${def.name}]`);
+  }
+
+  // Generate and show sample payload
+  const { getRepoContext: getCtx } = await import("./context");
+  try {
+    const ctx = await getCtx();
+    const payload = await def.generatePayload(ctx);
+    console.log(`\nSample payload (github.event):`);
+    console.log(JSON.stringify(payload, null, 2));
+  } catch {
+    // Fall back to a stub context if git/gh isn't available
+    const stubCtx = {
+      owner: "owner", repo: "repo", fullName: "owner/repo",
+      defaultBranch: "main", sha: "abc123", ref: "refs/heads/main",
+      remoteUrl: "https://github.com/owner/repo", token: "",
+      actor: "user", actorId: "1", repositoryId: "1",
+      repositoryOwnerId: "1", serverUrl: "https://github.com",
+      apiUrl: "https://api.github.com", graphqlUrl: "https://api.github.com/graphql",
+    };
+    const payload = await def.generatePayload(stubCtx);
+    console.log(`\nSample payload (github.event):`);
+    console.log(JSON.stringify(payload, null, 2));
+  }
+
+  console.log(`\nOverride with: localrunner ${def.name} -e payload.json`);
+  process.exit(0);
+}
+
 if (values.help) {
   printUsage();
   process.exit(0);
 }
 
+if (values["list-events"]) {
+  for (const def of EVENT_DEFINITIONS) {
+    console.log(def.name);
+    console.log(`  ${def.description}`);
+    if (def.validActions.length > 0) {
+      console.log(`  Activity types: ${def.validActions.join(", ")}`);
+      console.log(`  Default: ${def.defaultAction}`);
+    }
+    const filters: string[] = [];
+    if (def.supportsFilters.branches) filters.push("branches");
+    if (def.supportsFilters.paths) filters.push("paths");
+    if (def.supportsFilters.tags) filters.push("tags");
+    if (filters.length > 0) {
+      console.log(`  Filters: ${filters.join(", ")}`);
+    }
+    console.log();
+  }
+  process.exit(0);
+}
+
 // Event name: first positional or default to "push"
 const eventName: string = positionals[0] || "push";
+
+if (!EVENT_REGISTRY.has(eventName)) {
+  console.warn(`Warning: '${eventName}' is not a recognized GitHub Actions event. Using minimal payload.`);
+  console.warn(`Run with --list-events to see all supported events.`);
+}
 
 const port = parseInt(values.port || "9637", 10);
 
