@@ -1,3 +1,7 @@
+import { getDb } from "./db";
+import { steps as stepsTable, stepLogs } from "./db/schema";
+import { eq } from "drizzle-orm";
+
 export type OutputMode = "pretty" | "raw" | "verbose";
 
 export type RunEvent =
@@ -22,6 +26,11 @@ export class OutputHandler {
   steps: Map<string, StepRecord> = new Map();
   currentStep: string | null = null;
   allLogs: string[] = [];
+
+  jobId: string | null = null;
+  private stepDbIds: Map<string, number> = new Map();
+  private stepSortOrder = 0;
+  private pendingLogs: Map<string, { stepId: number; lines: string[] }> = new Map();
 
   constructor(mode: OutputMode) {
     this.mode = mode;
@@ -177,6 +186,25 @@ export class OutputHandler {
     if (this.steps.has(name)) return; // dedup
     this.steps.set(name, { name, startedAt: timestamp, logs: [] });
     this.currentStep = name;
+
+    if (this.jobId) {
+      try {
+        const db = getDb();
+        const order = this.stepSortOrder++;
+        const result = db
+          .insert(stepsTable)
+          .values({
+            jobId: this.jobId,
+            name,
+            startedAt: timestamp,
+            sortOrder: order,
+          })
+          .returning({ id: stepsTable.id })
+          .get();
+        this.stepDbIds.set(name, result.id);
+        this.pendingLogs.set(name, { stepId: result.id, lines: [] });
+      } catch {}
+    }
   }
 
   private trackStepComplete(name: string, conclusion: string, timestamp: number): void {
@@ -189,6 +217,20 @@ export class OutputHandler {
     if (this.currentStep === name) {
       this.currentStep = null;
     }
+
+    if (this.jobId) {
+      try {
+        const stepDbId = this.stepDbIds.get(name);
+        if (stepDbId) {
+          const db = getDb();
+          db.update(stepsTable)
+            .set({ conclusion, completedAt: timestamp })
+            .where(eq(stepsTable.id, stepDbId))
+            .run();
+          this.flushStepLogs(name);
+        }
+      } catch {}
+    }
   }
 
   private bufferStepLog(line: string): void {
@@ -197,6 +239,33 @@ export class OutputHandler {
       if (step) {
         step.logs.push(line);
       }
+      const pending = this.pendingLogs.get(this.currentStep);
+      if (pending) {
+        pending.lines.push(line);
+      }
+    }
+  }
+
+  private flushStepLogs(stepName: string): void {
+    const pending = this.pendingLogs.get(stepName);
+    if (!pending || pending.lines.length === 0) return;
+
+    try {
+      const db = getDb();
+      const values = pending.lines.map((content, i) => ({
+        stepId: pending.stepId,
+        lineNumber: i + 1,
+        content,
+      }));
+      db.insert(stepLogs).values(values).run();
+    } catch {}
+
+    pending.lines = [];
+  }
+
+  flushAllLogs(): void {
+    for (const [name] of this.pendingLogs) {
+      this.flushStepLogs(name);
     }
   }
 }

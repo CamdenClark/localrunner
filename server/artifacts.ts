@@ -2,6 +2,9 @@ import { join } from "path";
 import { homedir } from "os";
 import { mkdirSync, existsSync, readdirSync, readFileSync } from "fs";
 import type { RunContext } from "./types";
+import { getDb } from "../db";
+import { artifacts as artifactsTable } from "../db/schema";
+import { eq, and } from "drizzle-orm";
 
 interface ArtifactEntry {
   id: number;
@@ -58,6 +61,20 @@ export async function createArtifact(ctx: RunContext, body: any): Promise<Respon
   registerArtifactBlob(blobId, runId, name);
 
   await Bun.write(artifactMetaPath(runId, name), JSON.stringify(entry));
+
+  try {
+    const db = getDb();
+    db.insert(artifactsTable)
+      .values({
+        runId,
+        name,
+        size: 0,
+        finalized: 0,
+        createdAt: entry.createdAt,
+      })
+      .run();
+  } catch {}
+
   ctx.output.emit({ type: "server", tag: "artifact", message: `Created artifact "${name}" (id=${artifactId})` });
 
   // The upload-artifact action uses Azure SDK's BlobClient which extracts an accountName from the URL.
@@ -86,6 +103,20 @@ export async function finalizeArtifact(ctx: RunContext, body: any): Promise<Resp
     }
     artifactId = meta.id;
     await Bun.write(metaPath, JSON.stringify(meta));
+
+    try {
+      const db = getDb();
+      db.update(artifactsTable)
+        .set({ finalized: 1, size: meta.size })
+        .where(
+          and(
+            eq(artifactsTable.runId, runId),
+            eq(artifactsTable.name, name),
+          ),
+        )
+        .run();
+    } catch {}
+
     ctx.output.emit({ type: "server", tag: "artifact", message: `Finalized artifact "${name}" (size=${meta.size})` });
   }
 
