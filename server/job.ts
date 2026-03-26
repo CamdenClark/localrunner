@@ -1,77 +1,75 @@
 import { randomUUID } from "crypto";
+import type { Hono } from "hono";
+import type { ServerEnv } from "./hono";
 import { buildGitHubContextData } from "../context";
 import type { RunContext } from "./types";
 import { getDb } from "../db";
 import { runs, jobs } from "../db/schema";
 import { eq } from "drizzle-orm";
 
-export function jobRoutes(ctx: RunContext) {
-  return {
-    "/message": {
-      GET: () => {
-        if (!ctx.jobDispatched) {
-          ctx.jobDispatched = true;
-          ctx.output.emit({ type: "server", tag: "message", message: "Dispatching job!" });
-          return Response.json({
-            messageId: 1,
-            messageType: "RunnerJobRequest",
-            iv: null,
-            body: JSON.stringify({
-              id: "msg-1",
-              runner_request_id: "req-1",
-              run_service_url: ctx.serverBaseUrl,
-              should_acknowledge: false,
-              billing_owner_id: "",
-            }),
-          });
-        }
-        if (ctx.jobDone) {
-          return new Response(null, { status: 200 });
-        }
-        return new Promise((resolve) => {
-          setTimeout(() => resolve(new Response(null, { status: 200 })), 5000);
-        });
-      },
-    },
-    "/acknowledge": { POST: () => Response.json({}) },
-    "/acquirejob": {
-      POST: () => {
-        ctx.output.emit({ type: "server", tag: "job", message: "Job acquired" });
-        return Response.json(buildJobMessage(ctx));
-      },
-    },
-    "/renewjob": {
-      POST: () => Response.json({
-        lockedUntil: new Date(Date.now() + 3600000).toISOString(),
-      }),
-    },
-    "/completejob": {
-      POST: async (req: Request) => {
-        ctx.jobDone = true;
-        const body = await req.json() as any;
-        const conclusion = body.conclusion || "unknown";
-        ctx.output.emit({ type: "server", tag: "job", message: `Job completed (${conclusion})` });
-        ctx.output.emit({ type: "job_complete", conclusion });
+export function registerJobRoutes(app: Hono<ServerEnv>, ctx: RunContext) {
+  app.get("/message", (c) => {
+    if (!ctx.jobDispatched) {
+      ctx.jobDispatched = true;
+      ctx.output.emit({ type: "server", tag: "message", message: "Dispatching job!" });
+      return c.json({
+        messageId: 1,
+        messageType: "RunnerJobRequest",
+        iv: null,
+        body: JSON.stringify({
+          id: "msg-1",
+          runner_request_id: "req-1",
+          run_service_url: ctx.serverBaseUrl,
+          should_acknowledge: false,
+          billing_owner_id: "",
+        }),
+      });
+    }
+    if (ctx.jobDone) {
+      return new Response(null, { status: 200 });
+    }
+    return new Promise<Response>((resolve) => {
+      setTimeout(() => resolve(new Response(null, { status: 200 })), 5000);
+    });
+  });
 
-        ctx.output.flushAllLogs();
-        try {
-          const db = getDb();
-          const now = Date.now();
-          db.update(jobs)
-            .set({ status: "completed", conclusion, completedAt: now })
-            .where(eq(jobs.id, ctx.jobId))
-            .run();
-          db.update(runs)
-            .set({ status: "completed", conclusion, completedAt: now })
-            .where(eq(runs.id, ctx.runId))
-            .run();
-        } catch {}
+  app.post("/acknowledge", (c) => c.json({}));
 
-        ctx.resolveJobCompleted(conclusion);
-        return Response.json({});
-      },
-    },
-  };
+  app.post("/acquirejob", (c) => {
+    ctx.output.emit({ type: "server", tag: "job", message: "Job acquired" });
+    return c.json(buildJobMessage(ctx));
+  });
+
+  app.post("/renewjob", (c) =>
+    c.json({
+      lockedUntil: new Date(Date.now() + 3600000).toISOString(),
+    })
+  );
+
+  app.post("/completejob", async (c) => {
+    ctx.jobDone = true;
+    const body = (await c.req.json()) as any;
+    const conclusion = body.conclusion || "unknown";
+    ctx.output.emit({ type: "server", tag: "job", message: `Job completed (${conclusion})` });
+    ctx.output.emit({ type: "job_complete", conclusion });
+
+    ctx.output.flushAllLogs();
+    try {
+      const db = getDb();
+      const now = Date.now();
+      db.update(jobs)
+        .set({ status: "completed", conclusion, completedAt: now })
+        .where(eq(jobs.id, ctx.jobId))
+        .run();
+      db.update(runs)
+        .set({ status: "completed", conclusion, completedAt: now })
+        .where(eq(runs.id, ctx.runId))
+        .run();
+    } catch {}
+
+    ctx.resolveJobCompleted(conclusion);
+    return c.json({});
+  });
 }
 
 function buildJobMessage(ctx: RunContext): object {

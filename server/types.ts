@@ -54,6 +54,9 @@ export interface RunContext {
   jobDispatched: boolean;
   jobDone: boolean;
   resolveJobCompleted: (conclusion: string) => void;
+
+  /** Cached per-run Hono app (set lazily by the multi-run server) */
+  _app?: import("hono").Hono;
 }
 
 export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCompleted: Promise<string> } {

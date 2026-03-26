@@ -1,21 +1,25 @@
+import type { Hono } from "hono";
+import type { ServerEnv } from "./hono";
 import type { OutputHandler } from "../output";
 import type { RunContext } from "./types";
 
-export function actionsHandler(ctx: RunContext) {
-  return async (req: Request): Promise<Response | null> => {
-    const url = new URL(req.url);
-    if (req.method === "POST" && url.pathname.includes("/runnerresolve/actions")) {
-      const body = (await req.json()) as any;
-      const actions = (body.actions || []).map((a: any) => ({
-        action: a.action || a.name,
-        version: a.version || a.ref,
-        path: a.path || "",
-      }));
-      const resolved = await resolveActions(actions, ctx.repoCtx.token, ctx.repoCtx.apiUrl, ctx.output);
-      return Response.json({ actions: resolved });
+export function registerActionsRoutes(app: Hono<ServerEnv>, ctx: RunContext) {
+  // The runner posts to paths like /runnerresolve/actions or /_apis/.../runnerresolve/actions
+  app.post("*", async (c, next) => {
+    const url = new URL(c.req.url);
+    if (!url.pathname.includes("/runnerresolve/actions")) {
+      await next();
+      return;
     }
-    return null;
-  };
+    const body = (await c.req.json()) as any;
+    const actions = (body.actions || []).map((a: any) => ({
+      action: a.action || a.name,
+      version: a.version || a.ref,
+      path: a.path || "",
+    }));
+    const resolved = await resolveActions(actions, ctx.repoCtx.token, ctx.repoCtx.apiUrl, ctx.output);
+    return c.json({ actions: resolved });
+  });
 }
 
 async function resolveActions(
