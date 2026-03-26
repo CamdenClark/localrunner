@@ -18,7 +18,6 @@ localrunner isn't the only way to test your GitHub Actions workflows. Here are s
 **Cons:**
 - Uses its own custom runtime instead of the official GitHub Actions runner, so behavior can diverge from what actually happens on GitHub
 - Some actions don't work or behave differently than on GitHub
-- Docker images don't perfectly match GitHub's hosted runner environments
 
 localrunner takes a different approach: it launches the **official GitHub Actions runner binary** against a mock server implementing GitHub's internal runner protocol. This means the execution behavior matches GitHub much more closely.
 
