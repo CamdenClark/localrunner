@@ -11,7 +11,7 @@ const StepSchema = z.object({
   name: z.string().optional(),
   with: z.record(z.any()).optional(),
   env: EnvSchema.optional(),
-  if: z.string().optional(),
+  if: z.union([z.string(), z.boolean()]).transform(v => v === undefined ? undefined : String(v)).optional(),
   id: z.string().optional(),
   "continue-on-error": z.union([z.boolean(), z.string()]).optional(),
   "timeout-minutes": z.union([z.number(), z.string()]).optional(),
