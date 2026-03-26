@@ -10,6 +10,7 @@ export function buildExpressionContext(
   stepEnv?: Record<string, string>,
   secrets?: Record<string, string>,
   variables?: Record<string, string>,
+  matrix?: Record<string, string>,
 ): Record<string, string> {
   const ctx: Record<string, string> = {};
 
@@ -81,6 +82,13 @@ export function buildExpressionContext(
   if (variables) {
     for (const [k, v] of Object.entries(variables)) {
       ctx[`vars.${k}`] = v;
+    }
+  }
+
+  // matrix context
+  if (matrix) {
+    for (const [k, v] of Object.entries(matrix)) {
+      ctx[`matrix.${k}`] = v;
     }
   }
 

@@ -15,6 +15,7 @@ export interface RunConfig {
   runnerDir: string;
   secrets?: Record<string, string>;
   variables?: Record<string, string>;
+  matrix?: Record<string, string>;
   dockerImage?: string;
   services?: Record<string, Service>;
   output?: OutputHandler;
@@ -55,7 +56,7 @@ export interface RunResult {
 }
 
 export async function startRun(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, dockerImage, services, output: configOutput } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, dockerImage, services, output: configOutput } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
@@ -75,6 +76,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     jobName,
     secrets,
     variables,
+    matrix,
     hostAddress,
     runnerOs: isDocker ? "Linux" : "macOS",
     runnerArch: isDocker ? "X64" : "ARM64",

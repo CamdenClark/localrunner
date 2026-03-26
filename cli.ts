@@ -11,6 +11,7 @@ import { resolveSecrets, scanRequiredSecrets } from "./secrets";
 import { resolveVariables } from "./variables";
 import { existsSync } from "fs";
 import { OutputHandler, type OutputMode } from "./output";
+import { expandMatrix, filterMatrix, formatMatrixCombo } from "./matrix";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -29,6 +30,7 @@ const { values, positionals } = parseArgs({
     port: { type: "string", default: "9637" },
     raw: { type: "boolean" },
     verbose: { type: "boolean", short: "v" },
+    matrix: { type: "string", short: "m", multiple: true },
     "list-events": { type: "boolean" },
     help: { type: "boolean", short: "h" },
   },
@@ -63,6 +65,7 @@ Flags:
   --local                    Run with local runner instead of Docker (default: Docker)
   --image <name>             Docker image override for all jobs
   -P, --platform <label=img> Map runs-on label to Docker image (e.g. -P ubuntu-latest=myimage:tag)
+  -m, --matrix <key:value>   Filter matrix combinations (e.g. --matrix node:18)
   --port <number>            Server port (default: 9637)
   --raw                      Raw output for agents (step markers + log lines)
   -v, --verbose              Verbose output with full server internals
@@ -75,7 +78,8 @@ Examples:
   localrunner -l                                 # list all workflows
   localrunner push -l                            # list push workflows
   localrunner push -W .github/workflows/ci.yml   # specific workflow
-  localrunner push -s MY_SECRET=foo              # with secret`);
+  localrunner push -s MY_SECRET=foo              # with secret
+  localrunner push --matrix node:18              # filter matrix`);
 }
 
 if (values.help && positionals[0]) {
@@ -343,12 +347,26 @@ async function main() {
 
     const selectedJob = workflow.jobs[selectedJobName]!;
     const dockerImage = resolveDockerImage(selectedJob["runs-on"]);
-    console.log(`Job: ${selectedJobName}${dockerImage ? ` (${selectedJob["runs-on"] || "ubuntu-latest"} → ${dockerImage})` : " (local)"}`);
 
     if (!selectedJob.steps || selectedJob.steps.length === 0) {
       console.error(`Error: job '${selectedJobName}' has no steps`);
       continue;
     }
+
+    // Expand matrix combinations
+    const matrixConfig = selectedJob.strategy?.matrix;
+    let matrixCombinations = expandMatrix(matrixConfig);
+    if (values.matrix && values.matrix.length > 0) {
+      matrixCombinations = filterMatrix(matrixCombinations, values.matrix);
+      if (matrixCombinations.length === 0) {
+        console.error(`Error: no matrix combinations match the provided --matrix filters`);
+        continue;
+      }
+    }
+
+    const hasMatrix = matrixCombinations.length > 0;
+    // If no matrix, run once with empty combo
+    const combosToRun = hasMatrix ? matrixCombinations : [{}];
 
     // Resolve secrets per-workflow (yaml scanning is workflow-specific)
     const secrets = await resolveSecrets({
@@ -375,43 +393,59 @@ async function main() {
 
     const eventPayload = await generateEventPayload(eventName, repoCtx, payloadOverrides, inputDefaults);
 
-    // Build expression context and convert steps
-    const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName, undefined, secrets, variables);
-
-    const jobSteps = workflowStepsToRunnerSteps(
-      selectedJob.steps,
-      (script, displayName) => scriptStep(evaluateExpressions(script, exprCtx), displayName),
-      (action, ref, displayName, inputs) => {
-        const evaluated = inputs
-          ? Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
-          : undefined;
-        return actionStep(action, ref, displayName, evaluated);
-      },
-    );
-    const serviceNames = selectedJob.services ? Object.keys(selectedJob.services) : [];
-    if (serviceNames.length > 0) {
-      console.log(`Services: ${serviceNames.join(", ")}`);
+    if (hasMatrix) {
+      console.log(`Job: ${selectedJobName} (${combosToRun.length} matrix combination${combosToRun.length > 1 ? "s" : ""})${dockerImage ? ` (${selectedJob["runs-on"] || "ubuntu-latest"} → ${dockerImage})` : " (local)"}`);
+    } else {
+      console.log(`Job: ${selectedJobName}${dockerImage ? ` (${selectedJob["runs-on"] || "ubuntu-latest"} → ${dockerImage})` : " (local)"}`);
     }
-    console.log(`Steps: ${jobSteps.length}\n`);
 
-    const result = await startRun({
-      port,
-      repoCtx,
-      jobSteps,
-      eventName,
-      eventPayload,
-      workflowName,
-      jobName: selectedJobName,
-      runnerDir,
-      secrets,
-      variables,
-      dockerImage,
-      services: selectedJob.services,
-      output,
-    });
+    for (const matrixCombo of combosToRun) {
+      const comboLabel = hasMatrix ? ` ${formatMatrixCombo(matrixCombo)}` : "";
+      if (hasMatrix) {
+        console.log(`\n  Matrix:${comboLabel}`);
+      }
 
-    if (result.conclusion !== "succeeded") {
-      anyFailed = true;
+      // Build expression context and convert steps
+      const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName, undefined, secrets, variables, hasMatrix ? matrixCombo : undefined);
+
+      const jobSteps = workflowStepsToRunnerSteps(
+        selectedJob.steps,
+        (script, displayName) => scriptStep(evaluateExpressions(script, exprCtx), displayName),
+        (action, ref, displayName, inputs) => {
+          const evaluated = inputs
+            ? Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
+            : undefined;
+          return actionStep(action, ref, displayName, evaluated);
+        },
+      );
+      const serviceNames = selectedJob.services ? Object.keys(selectedJob.services) : [];
+      if (serviceNames.length > 0) {
+        console.log(`Services: ${serviceNames.join(", ")}`);
+      }
+      console.log(`  Steps: ${jobSteps.length}\n`);
+
+      const jobDisplayName = hasMatrix ? `${selectedJobName}${comboLabel}` : selectedJobName;
+
+      const result = await startRun({
+        port,
+        repoCtx,
+        jobSteps,
+        eventName,
+        eventPayload,
+        workflowName,
+        jobName: jobDisplayName,
+        runnerDir,
+        secrets,
+        variables,
+        matrix: hasMatrix ? matrixCombo : undefined,
+        dockerImage,
+        services: selectedJob.services,
+        output,
+      });
+
+      if (result.conclusion !== "succeeded") {
+        anyFailed = true;
+      }
     }
 
     console.log();

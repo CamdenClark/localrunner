@@ -113,7 +113,10 @@ function buildJobMessage(ctx: RunContext): object {
     contextData: {
       github: buildGitHubContextData(ctx.repoCtx, ctx.eventName, ctx.eventPayload, ctx.workflowName, ctx.jobName, ctx.runId),
       strategy: { t: 2, d: [] },
-      matrix: { t: 2, d: [] },
+      matrix: {
+        t: 2,
+        d: Object.entries(ctx.matrix).map(([k, v]) => ({ k, v })),
+      },
       job: { t: 2, d: [] },
       runner: {
         t: 2,
