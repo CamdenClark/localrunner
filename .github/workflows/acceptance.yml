@@ -22,7 +22,7 @@ jobs:
       - name: Pull localrunner image
         run: docker pull ghcr.io/camdenclark/localrunner:ubuntu24
       - name: Run acceptance tests (shard ${{ matrix.shard }})
-        run: bun test acceptance/
+        run: bun test --config=acceptance
         env:
           SHARD_INDEX: ${{ matrix.shard }}
           SHARD_TOTAL: 3
