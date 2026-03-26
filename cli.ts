@@ -492,14 +492,23 @@ async function main() {
       const runnerArch = isDocker ? "X64" : detectArch();
       const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName, undefined, secrets, variables, hasMatrix ? matrixCombo : undefined, { os: runnerOs, arch: runnerArch });
 
+      const evaluateOpts = (opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string> }) => {
+        if (!opts) return opts;
+        return {
+          ...opts,
+          environment: opts.environment
+            ? Object.fromEntries(Object.entries(opts.environment).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
+            : undefined,
+        };
+      };
       const jobSteps = workflowStepsToRunnerSteps(
         selectedJob.steps,
-        (script, displayName) => scriptStep(evaluateExpressions(script, exprCtx), displayName),
-        (action, ref, displayName, inputs) => {
+        (script, displayName, opts) => scriptStep(evaluateExpressions(script, exprCtx), displayName, evaluateOpts(opts)),
+        (action, ref, displayName, inputs, opts) => {
           const evaluated = inputs
             ? Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
             : undefined;
-          return actionStep(action, ref, displayName, evaluated);
+          return actionStep(action, ref, displayName, evaluated, evaluateOpts(opts));
         },
       );
       const serviceNames = selectedJob.services ? Object.keys(selectedJob.services) : [];

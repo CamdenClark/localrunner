@@ -73,6 +73,12 @@ export function registerJobRoutes(app: Hono<ServerEnv>, ctx: RunContext) {
 }
 
 function buildJobMessage(ctx: RunContext): object {
+  // Compute the runner workspace path
+  // Docker runners use host.docker.internal and run from /home/runner
+  const isDocker = ctx.hostAddress === "host.docker.internal";
+  const workspace = isDocker
+    ? `/home/runner/_work/${ctx.repoCtx.repo}/${ctx.repoCtx.repo}`
+    : "";
   return {
     messageType: "RunnerJobRequest",
     plan: {
@@ -127,7 +133,7 @@ function buildJobMessage(ctx: RunContext): object {
       ],
     },
     contextData: {
-      github: buildGitHubContextData(ctx.repoCtx, ctx.eventName, ctx.eventPayload, ctx.workflowName, ctx.jobName, ctx.runId),
+      github: buildGitHubContextData(ctx.repoCtx, ctx.eventName, ctx.eventPayload, ctx.workflowName, ctx.jobName, ctx.runId, workspace),
       strategy: { t: 2, d: [] },
       matrix: {
         t: 2,
@@ -142,13 +148,15 @@ function buildJobMessage(ctx: RunContext): object {
           { k: "name", v: "local-runner" },
           { k: "tool_cache", v: "" },
           { k: "temp", v: ctx.runnerOs === "Windows" ? (process.env["TEMP"] || "C:\\Windows\\Temp") : "/tmp" },
-          { k: "workspace", v: "" },
+          { k: "workspace", v: workspace },
           { k: "debug", v: "" },
         ],
       },
     },
     variables: {
       "system.culture": { value: "en-US" },
+      "system.defaultWorkingDirectory": { value: workspace },
+      "system.github.workspace": { value: workspace },
       "system.github.token": { value: ctx.repoCtx.token, isSecret: true },
       "system.github.job": { value: ctx.jobName.replace(/[^a-zA-Z0-9_]/g, "_") },
       "system.github.launch_endpoint": {
