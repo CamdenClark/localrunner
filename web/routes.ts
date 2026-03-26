@@ -1,12 +1,14 @@
 import type { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { layout } from "./layout";
 import { runsPage, runsTable } from "./runs";
 import { runDetailPage, runDetailContent } from "./run-detail";
 import { getDb } from "../db";
 import { runs, jobs, steps, stepLogs } from "../db/schema";
 import { eq, desc } from "drizzle-orm";
+import type { RunManager } from "../server/runs";
 
-export function registerWebRoutes(app: Hono) {
+export function registerWebRoutes(app: Hono, runManager: RunManager) {
   // Dashboard — list of recent runs
   app.get("/", (c) => {
     const db = getDb();
@@ -38,6 +40,68 @@ export function registerWebRoutes(app: Hono) {
     const data = loadRunDetail(runId);
     if (!data) return c.text("Not found", 404);
     return c.html(runDetailContent(data.run, data.jobs, data.steps, data.logs));
+  });
+
+  // SSE stream for the runs list page — notifies when any run changes
+  app.get("/sse/runs", (c) => {
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+      stream.onAbort(() => { closed = true; });
+
+      const unsubscribe = runManager.eventBus.subscribe(() => {
+        if (closed) return;
+        stream.writeSSE({ event: "run_changed", data: "" }).catch(() => { closed = true; });
+      });
+
+      const keepalive = setInterval(() => {
+        if (closed) { clearInterval(keepalive); return; }
+        stream.writeSSE({ event: "keepalive", data: "" }).catch(() => { closed = true; });
+      }, 30000);
+
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (closed) { clearInterval(check); clearInterval(keepalive); unsubscribe(); resolve(); }
+        }, 1000);
+      });
+    });
+  });
+
+  // SSE stream for a single run — notifies on step/log/job changes
+  app.get("/sse/runs/:id", (c) => {
+    const runId = c.req.param("id");
+    const ctx = runManager.getRunByRunId(runId);
+
+    if (!ctx) {
+      return streamSSE(c, async (stream) => {
+        await stream.writeSSE({ event: "run_complete", data: "" });
+      });
+    }
+
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+      stream.onAbort(() => { closed = true; });
+
+      const unsubscribe = ctx.output.subscribe((event) => {
+        if (closed) return;
+        if (event.type === "step_start" || event.type === "step_complete" ||
+            event.type === "step_log" || event.type === "job_complete") {
+          stream.writeSSE({ event: "run_changed", data: "" }).catch(() => { closed = true; });
+        }
+      });
+
+      const keepalive = setInterval(() => {
+        if (closed) { clearInterval(keepalive); return; }
+        stream.writeSSE({ event: "keepalive", data: "" }).catch(() => { closed = true; });
+      }, 30000);
+
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (closed || ctx.output.jobCompleted) {
+            clearInterval(check); clearInterval(keepalive); unsubscribe(); resolve();
+          }
+        }, 1000);
+      });
+    });
   });
 }
 
