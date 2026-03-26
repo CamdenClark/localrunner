@@ -1,0 +1,49 @@
+name: Test Case Statements
+on: push
+
+jobs:
+  test-conditions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Always runs
+        run: echo "This always runs"
+
+      - name: Conditional true
+        if: true
+        run: echo "This runs because condition is true"
+
+      - name: Conditional false
+        if: false
+        run: echo "This should be skipped"
+
+      - name: Check event name
+        if: github.event_name == 'push'
+        run: echo "This is a push event"
+
+      - name: Check event name not match
+        if: github.event_name == 'pull_request'
+        run: echo "This should be skipped - not a PR"
+
+      - name: Success function
+        if: success()
+        run: echo "Previous steps succeeded"
+
+      - name: Always function
+        if: always()
+        run: echo "This runs regardless"
+
+      - name: Contains function
+        if: contains(github.ref, 'main') || contains(github.ref, 'case-statements')
+        run: echo "Ref contains main or case-statements"
+
+      - name: Negation
+        if: "!false"
+        run: echo "Not false is true"
+
+      - name: And operator
+        if: true && true
+        run: echo "Both are true"
+
+      - name: String comparison
+        if: runner.os == 'Linux'
+        run: echo "Running on Linux"
