@@ -30,7 +30,7 @@ export const jobs = sqliteTable("jobs", {
 });
 
 export const steps = sqliteTable("steps", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: text("id").primaryKey(),
   jobId: text("job_id")
     .notNull()
     .references(() => jobs.id),
@@ -44,7 +44,7 @@ export const steps = sqliteTable("steps", {
 
 export const stepLogs = sqliteTable("step_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  stepId: integer("step_id")
+  stepId: text("step_id")
     .notNull()
     .references(() => steps.id),
   lineNumber: integer("line_number").notNull(),

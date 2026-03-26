@@ -70,7 +70,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     resolveJobCompleted = resolve;
   });
 
-  const runId = Date.now().toString();
+  const runId = randomUUID();
   const jobId = randomUUID();
 
   const ctx: RunContext = {
@@ -104,6 +104,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
 
   output.runId = runId;
   output.jobId = jobId;
+  output.setStepMapping(config.jobSteps);
 
   try {
     const db = getDb();

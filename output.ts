@@ -1,6 +1,7 @@
+import { randomUUID } from "crypto";
 import { getDb } from "./db";
 import { runs, jobs, steps as stepsTable, stepLogs } from "./db/schema";
-import { eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export type OutputMode = "pretty" | "raw" | "verbose";
 
@@ -30,15 +31,25 @@ export class OutputHandler {
   runId: string | null = null;
   jobId: string | null = null;
   jobCompleted = false;
-  private stepDbIds: Map<string, number> = new Map();
+  private stepUuids: Map<string, string> = new Map();
   private stepSortOrder = 0;
-  private pendingLogs: Map<string, { stepId: number; lines: string[] }> = new Map();
+  private pendingLogs: Map<string, { stepId: string; lines: string[] }> = new Map();
 
   /** External subscribers for event streaming (e.g. SSE) */
   private subscribers: Set<(event: RunEvent) => void> = new Set();
 
   constructor(mode: OutputMode) {
     this.mode = mode;
+  }
+
+  /** Build name→UUID mapping from the step objects sent to the runner. */
+  setStepMapping(jobSteps: object[]): void {
+    for (const step of jobSteps) {
+      const s = step as { id?: string; displayName?: string };
+      if (s.id && s.displayName) {
+        this.stepUuids.set(s.displayName, s.id);
+      }
+    }
   }
 
   subscribe(fn: (event: RunEvent) => void): () => void {
@@ -209,19 +220,19 @@ export class OutputHandler {
       try {
         const db = getDb();
         const order = this.stepSortOrder++;
-        const result = db
-          .insert(stepsTable)
+        const stepId = this.stepUuids.get(name) || randomUUID();
+        db.insert(stepsTable)
           .values({
+            id: stepId,
             jobId: this.jobId,
             name,
             status: "in_progress",
             startedAt: timestamp,
             sortOrder: order,
           })
-          .returning({ id: stepsTable.id })
-          .get();
-        this.stepDbIds.set(name, result.id);
-        this.pendingLogs.set(name, { stepId: result.id, lines: [] });
+          .run();
+        this.stepUuids.set(name, stepId);
+        this.pendingLogs.set(name, { stepId, lines: [] });
       } catch {}
     }
   }
@@ -239,12 +250,12 @@ export class OutputHandler {
 
     if (this.jobId) {
       try {
-        const stepDbId = this.stepDbIds.get(name);
-        if (stepDbId) {
+        const stepId = this.stepUuids.get(name);
+        if (stepId) {
           const db = getDb();
           db.update(stepsTable)
             .set({ status: "completed", conclusion, completedAt: timestamp })
-            .where(eq(stepsTable.id, stepDbId))
+            .where(eq(stepsTable.id, stepId))
             .run();
           this.flushStepLogs(name);
         }
@@ -300,11 +311,11 @@ export class OutputHandler {
       // Mark incomplete steps as cancelled
       for (const [name, step] of this.steps) {
         if (!step.completedAt) {
-          const stepDbId = this.stepDbIds.get(name);
-          if (stepDbId) {
+          const stepId = this.stepUuids.get(name);
+          if (stepId) {
             db.update(stepsTable)
               .set({ status: "completed", conclusion: "cancelled", completedAt: now })
-              .where(eq(stepsTable.id, stepDbId))
+              .where(eq(stepsTable.id, stepId))
               .run();
           }
         }
