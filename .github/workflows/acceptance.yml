@@ -1,5 +1,9 @@
 name: Acceptance Tests
-on: [push, pull_request]
+on:
+  pull_request:
+    types: [synchronize]
+  push:
+    branches: [main]
 jobs:
   acceptance:
     runs-on: ubuntu-latest
