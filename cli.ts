@@ -298,12 +298,32 @@ async function main() {
     platformOverrides[p.slice(0, eq)] = p.slice(eq + 1);
   }
 
+  function resolveRunsOnImage(label: string): string | undefined {
+    // Exact match in defaults
+    if (DEFAULT_IMAGES[label]) return DEFAULT_IMAGES[label];
+
+    // Larger runner variants: ubuntu-latest-Xcores, ubuntu-24.04-Xcores, etc.
+    // Strip the trailing resource suffix (e.g. "-4-cores", "-16-cores") and retry
+    const withoutCores = label.replace(/-\d+-cores?$/, "");
+    if (withoutCores !== label && DEFAULT_IMAGES[withoutCores]) {
+      return DEFAULT_IMAGES[withoutCores];
+    }
+
+    // Match ubuntu version patterns like "ubuntu-22.04-anything"
+    if (label.startsWith("ubuntu-22.04")) return DEFAULT_IMAGES["ubuntu-22.04"];
+    if (label.startsWith("ubuntu-24.04") || label.startsWith("ubuntu-latest")) {
+      return DEFAULT_IMAGES["ubuntu-latest"];
+    }
+
+    return undefined;
+  }
+
   function resolveDockerImage(runsOn: string | string[] | undefined): string | undefined {
     if (values.local) return undefined;
     if (values.image) return values.image;
     const label = Array.isArray(runsOn) ? runsOn[0] : runsOn;
     const key = label || "ubuntu-latest";
-    return platformOverrides[key] || DEFAULT_IMAGES[key] || DEFAULT_IMAGES["ubuntu-latest"];
+    return platformOverrides[key] || resolveRunsOnImage(key) || DEFAULT_IMAGES["ubuntu-latest"];
   }
 
   let anyFailed = false;
