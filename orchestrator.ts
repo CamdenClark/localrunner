@@ -160,13 +160,59 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     await new Promise((r) => setTimeout(r, 2000));
   }
 
+  // Cleanup function to kill containers, remove networks, stop server, and clean temp files
+  let proc: ReturnType<typeof Bun.spawn> | undefined;
+  let runnerContainerName: string | undefined;
+  let cleanedUp = false;
+
+  function cleanup() {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
+    output.emit({ type: "info", message: "\nCleaning up..." });
+
+    if (proc) {
+      try { proc.kill(); } catch {}
+    }
+
+    if (runnerContainerName) {
+      Bun.spawnSync(["docker", "rm", "-f", runnerContainerName]);
+    }
+
+    for (const id of serviceContainerIds) {
+      Bun.spawnSync(["docker", "rm", "-f", id]);
+    }
+
+    if (networkName) {
+      Bun.spawnSync(["docker", "network", "rm", networkName]);
+    }
+
+    server.stop(true);
+
+    try {
+      const fs = require("fs");
+      fs.unlinkSync(join(tmpDir, "event.json"));
+      fs.rmdirSync(tmpDir);
+    } catch {
+      // best effort cleanup
+    }
+  }
+
+  function onSignal() {
+    cleanup();
+    process.exit(1);
+  }
+
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
   output.emit({ type: "info", message: isDocker ? `Starting runner in Docker (${dockerImage})...\n` : "Starting runner...\n" });
 
-  let proc: ReturnType<typeof Bun.spawn>;
-
   if (isDocker) {
+    runnerContainerName = `localrunner-runner-${Date.now()}`;
     const dockerArgs = [
       "docker", "run", "--rm",
+      "--name", runnerContainerName,
       "--network", networkName!,
       "--add-host", "host.docker.internal:host-gateway",
       "-e", "GITHUB_ACTIONS_RUNNER_FORCE_GHES=1",
@@ -214,11 +260,11 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     }
   }
 
-  const stdoutPipe = pipeStream(proc.stdout as ReadableStream<Uint8Array>, "stdout");
-  const stderrPipe = pipeStream(proc.stderr as ReadableStream<Uint8Array>, "stderr");
+  const stdoutPipe = pipeStream(proc!.stdout as ReadableStream<Uint8Array>, "stdout");
+  const stderrPipe = pipeStream(proc!.stderr as ReadableStream<Uint8Array>, "stderr");
 
   // Wait for either job completion or runner exit
-  const runnerExit = proc.exited;
+  const runnerExit = proc!.exited;
 
   const conclusion = await Promise.race([
     jobCompleted,
@@ -233,27 +279,11 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
 
   // Clean up
   output.emit({ type: "info", message: "\nRunner finished. Stopping server..." });
-  server.stop(true);
-  proc.kill();
+  cleanup();
 
-  // Clean up service containers
-  for (const id of serviceContainerIds) {
-    Bun.spawnSync(["docker", "rm", "-f", id]);
-  }
-
-  // Clean up Docker network
-  if (networkName) {
-    Bun.spawnSync(["docker", "network", "rm", networkName]);
-  }
-
-  // Clean up temp dir
-  try {
-    const { unlinkSync, rmdirSync } = await import("fs");
-    unlinkSync(join(tmpDir, "event.json"));
-    rmdirSync(tmpDir);
-  } catch {
-    // best effort cleanup
-  }
+  // Remove signal handlers so they don't interfere with subsequent runs
+  process.removeListener("SIGINT", onSignal);
+  process.removeListener("SIGTERM", onSignal);
 
   return { conclusion, logs: output.allLogs };
 }
