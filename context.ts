@@ -76,12 +76,20 @@ export async function getRepoContext(): Promise<RepoContext> {
 }
 
 // Serialize an event payload object into the {t, d} context format
+function serializeEventValue(v: any): any {
+  if (v === null || v === undefined) return "";
+  if (Array.isArray(v)) {
+    return { t: 1, seq: v.map(serializeEventValue) };
+  }
+  if (v && typeof v === "object") {
+    return serializeEventPayload(v);
+  }
+  return v;
+}
+
 function serializeEventPayload(payload: object): { t: number; d: any[] } {
   const entries = Object.entries(payload).map(([k, v]) => {
-    if (v && typeof v === "object" && !Array.isArray(v)) {
-      return { k, v: serializeEventPayload(v) };
-    }
-    return { k, v };
+    return { k, v: serializeEventValue(v) };
   });
   return { t: 2, d: entries };
 }

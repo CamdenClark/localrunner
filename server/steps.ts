@@ -27,14 +27,14 @@ export function scriptStep(
     displayName: displayName || `Run ${script.slice(0, 40)}`,
     contextName: `run_${randomUUID().slice(0, 8)}`,
     condition: resolveCondition(opts?.condition),
-    continueOnError: opts?.continueOnError ?? false,
-    environment: opts?.environment
-      ? { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) }
-      : { type: 2, map: [] },
     inputs: {
       type: 2,
       map: [{ Key: "script", Value: script }],
     },
+    ...(opts?.environment ? {
+      environment: { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) },
+    } : {}),
+    ...(opts?.continueOnError ? { continueOnError: true } : {}),
   };
 }
 
@@ -71,13 +71,13 @@ export function actionStep(
     displayName: displayName || `Run ${action}@${ref}`,
     contextName: action.replace(/[^a-zA-Z0-9]/g, "_"),
     condition: resolveCondition(opts?.condition),
-    continueOnError: opts?.continueOnError ?? false,
-    environment: opts?.environment
-      ? { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) }
-      : { type: 2, map: [] },
     inputs: {
       type: 2,
       map: inputMap,
     },
+    ...(opts?.environment ? {
+      environment: { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) },
+    } : {}),
+    ...(opts?.continueOnError ? { continueOnError: true } : {}),
   };
 }
