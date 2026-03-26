@@ -2,7 +2,7 @@ import { createRunContext } from "./types";
 import type { ServerConfig, ServerHandle } from "./types";
 import { authRoutes } from "./auth";
 import { jobRoutes } from "./job";
-import { cacheRoutes, evictExpiredCaches } from "./cache";
+import { cacheRoutes } from "./cache";
 import { actionsHandler } from "./actions";
 import { resultsHandler } from "./results";
 import { logsHandler, websocketHandlers } from "./logs";
@@ -13,9 +13,6 @@ export type { ServerConfig, ServerHandle } from "./types";
 export function createServer(config: ServerConfig): ServerHandle {
   const { ctx, jobCompleted } = createRunContext(config);
   const { output } = ctx;
-
-  // Clean up expired cache entries on startup
-  evictExpiredCaches(output);
 
   // Build wildcard handlers (for paths with dynamic segments the router can't match)
   const handleActions = actionsHandler(ctx);
