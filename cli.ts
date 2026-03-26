@@ -184,7 +184,7 @@ if (positionals[0] === "serve") {
   const runManager = new RunManager();
   const { app, addRunnerCatchAll } = createMultiRunApp(runManager);
 
-  registerWebRoutes(app, runManager);
+  registerWebRoutes(app, runManager, port);
   registerApiRoutes(app, runManager, port);
   addRunnerCatchAll();
 

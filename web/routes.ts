@@ -1,14 +1,18 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { join, resolve, basename } from "path";
 import { layout } from "./layout";
 import { runsPage, runsTable } from "./runs";
 import { runDetailPage, runDetailContent } from "./run-detail";
+import { workflowsPage } from "./workflows";
+import { triggerWorkflow } from "./trigger";
 import { getDb } from "../db";
-import { runs, jobs, steps, stepLogs } from "../db/schema";
+import { runs, jobs, steps, stepLogs, artifacts } from "../db/schema";
 import { eq, desc } from "drizzle-orm";
+import { parseWorkflow, normalizeOn } from "../workflow";
 import type { RunManager } from "../server/runs";
 
-export function registerWebRoutes(app: Hono, runManager: RunManager) {
+export function registerWebRoutes(app: Hono, runManager: RunManager, port: number) {
   // Dashboard — list of recent runs
   app.get("/", (c) => {
     const db = getDb();
@@ -30,7 +34,7 @@ export function registerWebRoutes(app: Hono, runManager: RunManager) {
     if (!data) return c.html(layout("Not Found", runsPage([])), 404);
     return c.html(layout(
       `${data.run.workflowName || "Run"} — ${data.run.jobName || ""}`,
-      runDetailPage(data.run, data.jobs, data.steps, data.logs),
+      runDetailPage(data.run, data.jobs, data.steps, data.logs, data.artifacts),
     ));
   });
 
@@ -39,7 +43,7 @@ export function registerWebRoutes(app: Hono, runManager: RunManager) {
     const runId = c.req.param("id");
     const data = loadRunDetail(runId);
     if (!data) return c.text("Not found", 404);
-    return c.html(runDetailContent(data.run, data.jobs, data.steps, data.logs));
+    return c.html(runDetailContent(data.run, data.jobs, data.steps, data.logs, data.artifacts));
   });
 
   // SSE stream for the runs list page — notifies when any run changes
@@ -64,6 +68,28 @@ export function registerWebRoutes(app: Hono, runManager: RunManager) {
         }, 1000);
       });
     });
+  });
+
+  // Workflows page — discover and trigger workflows
+  app.get("/workflows", async (c) => {
+    const workflows = await discoverWorkflows();
+    return c.html(layout("Workflows", workflowsPage(workflows)));
+  });
+
+  // Trigger a workflow run
+  app.post("/api/trigger", async (c) => {
+    const body = await c.req.parseBody();
+    const fileName = body.fileName as string;
+    const event = body.event as string;
+    if (!fileName || !event) return c.text("Missing fileName or event", 400);
+
+    try {
+      const { runId } = await triggerWorkflow(fileName, event, port, runManager);
+      c.header("HX-Redirect", `/runs/${runId}`);
+      return c.text("ok");
+    } catch (err) {
+      return c.text(`Trigger failed: ${(err as Error).message}`, 500);
+    }
   });
 
   // SSE stream for a single run — notifies on step/log/job changes
@@ -105,6 +131,32 @@ export function registerWebRoutes(app: Hono, runManager: RunManager) {
   });
 }
 
+async function discoverWorkflows() {
+  const workflowDir = resolve(".github/workflows");
+  const glob = new Bun.Glob("*.{yml,yaml}");
+  const results: { fileName: string; name: string; events: string[]; jobs: string[] }[] = [];
+
+  try {
+    for await (const file of glob.scan({ cwd: workflowDir })) {
+      try {
+        const text = await Bun.file(join(workflowDir, file)).text();
+        const workflow = parseWorkflow(text);
+        const events = Object.keys(normalizeOn(workflow.on));
+        const jobNames = Object.keys(workflow.jobs);
+        results.push({
+          fileName: file,
+          name: workflow.name || basename(file, ".yml"),
+          events,
+          jobs: jobNames,
+        });
+      } catch {}
+    }
+  } catch {}
+
+  results.sort((a, b) => a.name.localeCompare(b.name));
+  return results;
+}
+
 function loadRunDetail(runId: string) {
   const db = getDb();
   const run = db.select().from(runs).where(eq(runs.id, runId)).get();
@@ -123,5 +175,7 @@ function loadRunDetail(runId: string) {
     }
   }
 
-  return { run, jobs: runJobs, steps: allSteps, logs: allLogs };
+  const runArtifacts = db.select().from(artifacts).where(eq(artifacts.runId, runId)).all();
+
+  return { run, jobs: runJobs, steps: allSteps, logs: allLogs, artifacts: runArtifacts };
 }

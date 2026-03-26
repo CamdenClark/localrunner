@@ -21,7 +21,62 @@ export function layout(title: string, content: HtmlEscapedString) {
     a { color: #58a6ff; text-decoration: none; }
     a:hover { text-decoration: underline; }
 
-    .container { max-width: 960px; margin: 0 auto; padding: 1rem; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+
+    .run-layout { display: flex; gap: 1.5rem; }
+    .run-sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 1rem;
+      align-self: flex-start;
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
+      border-right: 1px solid #21262d;
+      padding-right: 1rem;
+      background: #0d1117;
+    }
+    .run-main { flex: 1; min-width: 0; }
+
+    .sidebar-section { margin-bottom: 1.5rem; }
+    .sidebar-section h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+      padding: 0 0.5rem;
+    }
+    .sidebar-job {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #c9d1d9;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .sidebar-job:hover { background: #161b22; text-decoration: none; }
+    .sidebar-job .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-succeeded { background: #238636; }
+    .dot-failed { background: #da3633; }
+    .dot-cancelled { background: #6e7681; }
+    .dot-in_progress { background: #d29922; }
+    .dot-queued { background: #388bfd; }
+
+    .sidebar-artifact {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.3rem 0.5rem;
+      font-size: 0.8rem;
+      color: #8b949e;
+    }
+    .sidebar-artifact .artifact-size { margin-left: auto; font-size: 0.7rem; }
 
     header {
       border-bottom: 1px solid #21262d;
@@ -56,18 +111,36 @@ export function layout(title: string, content: HtmlEscapedString) {
     .run-header h2 { font-size: 1.2rem; margin-bottom: 0.25rem; }
     .run-meta { font-size: 0.85rem; color: #8b949e; }
 
-    .step { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid #21262d; }
+    .step { margin: 0.25rem 0; border-left: 3px solid #21262d; border-radius: 4px; }
     .step-succeeded { border-color: #238636; }
     .step-failed { border-color: #da3633; }
     .step-in_progress { border-color: #d29922; }
-    .step-name { font-weight: 600; font-size: 0.9rem; }
-    .step-meta { font-size: 0.8rem; color: #8b949e; }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .step-header:hover { background: #161b22; }
+    .step-header .chevron {
+      font-size: 0.7rem;
+      color: #484f58;
+      transition: transform 0.15s;
+      flex-shrink: 0;
+    }
+    .step.open .chevron { transform: rotate(90deg); }
+    .step-name { font-weight: 600; font-size: 0.9rem; flex: 1; }
+    .step-meta { font-size: 0.8rem; color: #8b949e; flex-shrink: 0; }
+    .step-body { display: none; }
+    .step.open .step-body { display: block; }
 
     .logs {
-      margin-top: 1rem;
+      margin: 0;
       background: #161b22;
-      border: 1px solid #21262d;
-      border-radius: 6px;
+      border-top: 1px solid #21262d;
       padding: 0.75rem;
       max-height: 600px;
       overflow-y: auto;
@@ -78,6 +151,35 @@ export function layout(title: string, content: HtmlEscapedString) {
       line-height: 1.4;
     }
     .log-line { color: #c9d1d9; }
+
+    .workflow-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .workflow-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      background: #161b22;
+    }
+    .workflow-card:hover { border-color: #30363d; }
+    .workflow-name { font-weight: 600; font-size: 1rem; }
+    .workflow-file { font-size: 0.8rem; color: #8b949e; margin-top: 0.15rem; }
+    .workflow-jobs { font-size: 0.8rem; color: #8b949e; margin-top: 0.25rem; }
+    .workflow-triggers { display: flex; gap: 0.5rem; flex-wrap: wrap; flex-shrink: 0; margin-left: 1rem; }
+    .trigger-btn {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+    .trigger-btn:hover { background: #30363d; border-color: #484f58; }
+    .trigger-btn.triggered { background: #238636; border-color: #238636; color: #fff; }
 
     .empty { text-align: center; padding: 3rem; color: #8b949e; }
 
@@ -91,15 +193,37 @@ export function layout(title: string, content: HtmlEscapedString) {
 <body>
   <header>
     <div class="container">
-      <h1>localrunner</h1>
+      <h1><a href="/" style="color: inherit;">localrunner</a></h1>
       <nav>
-        <a href="/">Runs</a>
+        <a href="/workflows">Workflows</a>
       </nav>
     </div>
   </header>
   <div class="container">
     ${content}
   </div>
+  <script>
+    // Track user-toggled steps so state survives SSE innerHTML swaps
+    const userToggles = new Map(); // stepId -> true (open) | false (closed)
+
+    document.addEventListener('click', (e) => {
+      const header = e.target.closest('.step-header');
+      if (!header) return;
+      const step = header.parentElement;
+      step.classList.toggle('open');
+      const id = step.dataset.stepId;
+      if (id) userToggles.set(id, step.classList.contains('open'));
+    });
+
+    // After HTMX swaps new HTML in, re-apply any user overrides
+    document.addEventListener('htmx:afterSwap', () => {
+      for (const [id, isOpen] of userToggles) {
+        const el = document.querySelector('[data-step-id="' + id + '"]');
+        if (!el) continue;
+        el.classList.toggle('open', isOpen);
+      }
+    });
+  </script>
 </body>
 </html>`;
 }
