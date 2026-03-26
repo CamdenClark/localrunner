@@ -34,13 +34,26 @@ export class OutputHandler {
   private stepSortOrder = 0;
   private pendingLogs: Map<string, { stepId: number; lines: string[] }> = new Map();
 
+  /** External subscribers for event streaming (e.g. SSE) */
+  private subscribers: Set<(event: RunEvent) => void> = new Set();
+
   constructor(mode: OutputMode) {
     this.mode = mode;
+  }
+
+  subscribe(fn: (event: RunEvent) => void): () => void {
+    this.subscribers.add(fn);
+    return () => this.subscribers.delete(fn);
   }
 
   emit(event: RunEvent): void {
     if (event.type === "job_complete") {
       this.jobCompleted = true;
+    }
+
+    // Notify subscribers
+    for (const fn of this.subscribers) {
+      fn(event);
     }
     switch (this.mode) {
       case "verbose":

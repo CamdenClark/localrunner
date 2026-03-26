@@ -159,32 +159,3 @@ export async function getSignedArtifactURL(ctx: RunContext, body: any): Promise<
   });
 }
 
-export function artifactDownloadHandler(ctx: RunContext) {
-  return async (req: Request): Promise<Response | null> => {
-    const url = new URL(req.url);
-    const path = url.pathname;
-
-    if (!path.startsWith("/_artifacts/")) return null;
-
-    // /_artifacts/{runId}/{name}
-    const parts = path.slice("/_artifacts/".length).split("/");
-    if (parts.length < 2) return new Response("Not found", { status: 404 });
-
-    const runId = parts[0];
-    const name = decodeURIComponent(parts.slice(1).join("/"));
-    const filePath = artifactDataPath(runId, name);
-
-    if (existsSync(filePath)) {
-      const file = Bun.file(filePath);
-      ctx.output.emit({ type: "server", tag: "artifact", message: `Download "${name}" (run=${runId})` });
-      return new Response(file, {
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "Content-Length": String(file.size),
-        },
-      });
-    }
-
-    return new Response("Artifact not found", { status: 404 });
-  };
-}

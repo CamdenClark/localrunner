@@ -5,7 +5,7 @@ import { getRepoContext } from "./context";
 import { parseWorkflow, matchesEvent, normalizeOn, workflowStepsToRunnerSteps } from "./workflow";
 import { generateEventPayload, EVENT_DEFINITIONS, EVENT_REGISTRY } from "./events";
 import { scriptStep, actionStep } from "./server/index";
-import { startRun } from "./orchestrator";
+import { startRun, startRunOnRemoteServer } from "./orchestrator";
 import { buildExpressionContext, evaluateExpressions } from "./expressions";
 import { resolveSecrets, scanRequiredSecrets } from "./secrets";
 import { resolveVariables } from "./variables";
@@ -47,11 +47,15 @@ function printUsage() {
     .join("\n");
 
   console.log(`Usage: localrunner [event] [flags]
+       localrunner serve [--port 9637]
 
 Events:
 ${eventLines}
 
   Use --list-events to see all ${EVENT_REGISTRY.size} supported events.
+
+Commands:
+  serve                     Start the long-lived server with web UI
 
 Flags:
   -W, --workflows <path>    Workflow file or directory (default: .github/workflows/)
@@ -168,6 +172,45 @@ if (values["list-events"]) {
   process.exit(0);
 }
 
+// --- Serve subcommand ---
+if (positionals[0] === "serve") {
+  const port = parseInt(values.port || "9637", 10);
+  const { createMultiRunApp, websocket } = await import("./server/hono");
+  const { RunManager } = await import("./server/runs");
+  const { registerWebRoutes } = await import("./web/routes");
+  const { registerApiRoutes } = await import("./web/api");
+
+  const runManager = new RunManager();
+  const { app, addRunnerCatchAll } = createMultiRunApp(runManager);
+
+  registerWebRoutes(app);
+  registerApiRoutes(app, runManager, port);
+  addRunnerCatchAll();
+
+  const server = Bun.serve({ port, fetch: app.fetch, websocket });
+
+  console.log(`localrunner server listening on http://localhost:${port}`);
+  console.log(`Web UI: http://localhost:${port}/`);
+  console.log(`Press Ctrl+C to stop.\n`);
+
+  const pidFile = `${process.env.HOME}/.localrunner/server.pid`;
+  await Bun.write(pidFile, String(process.pid));
+
+  process.on("SIGINT", () => {
+    try { require("fs").unlinkSync(pidFile); } catch {}
+    server.stop(true);
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    try { require("fs").unlinkSync(pidFile); } catch {}
+    server.stop(true);
+    process.exit(0);
+  });
+
+  // Keep the process alive
+  await new Promise(() => {});
+}
+
 // Event name: first positional or default to "push"
 const eventName: string = positionals[0] || "push";
 
@@ -180,6 +223,17 @@ const port = parseInt(values.port || "9637", 10);
 
 const outputMode: OutputMode = values.raw ? "raw" : values.verbose ? "verbose" : "pretty";
 const output = new OutputHandler(outputMode);
+
+/** Check if the long-lived server is running on the given port. */
+async function isServerRunning(): Promise<boolean> {
+  try {
+    const res = await fetch(`http://localhost:${port}/api/health`, { signal: AbortSignal.timeout(500) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 
 // --- Find and parse workflow(s) ---
 
@@ -241,7 +295,12 @@ async function main() {
     return process.exit(0);
   }
 
+  const serverRunning = await isServerRunning();
+
   console.log("=== localrunner ===\n");
+  if (serverRunning) {
+    console.log(`Using running server on port ${port}\n`);
+  }
 
   // --- Find workflows ---
   let workflowMatches: { path: string; workflow: ReturnType<typeof parseWorkflow>; yamlText: string }[];
@@ -447,22 +506,43 @@ async function main() {
 
       const jobDisplayName = hasMatrix ? `${selectedJobName}${comboLabel}` : selectedJobName;
 
-      const result = await startRun({
-        port,
-        repoCtx,
-        jobSteps,
-        eventName,
-        eventPayload,
-        workflowName,
-        jobName: jobDisplayName,
-        runnerDir,
-        secrets,
-        variables,
-        matrix: hasMatrix ? matrixCombo : undefined,
-        dockerImage,
-        services: selectedJob.services,
-        output,
-      });
+      let result: { conclusion: string };
+
+      if (serverRunning) {
+        result = await startRunOnRemoteServer({
+          port,
+          repoCtx,
+          jobSteps,
+          eventName,
+          eventPayload,
+          workflowName,
+          jobName: jobDisplayName,
+          runnerDir,
+          secrets,
+          variables,
+          matrix: hasMatrix ? matrixCombo : undefined,
+          dockerImage,
+          services: selectedJob.services,
+          output,
+        });
+      } else {
+        result = await startRun({
+          port,
+          repoCtx,
+          jobSteps,
+          eventName,
+          eventPayload,
+          workflowName,
+          jobName: jobDisplayName,
+          runnerDir,
+          secrets,
+          variables,
+          matrix: hasMatrix ? matrixCombo : undefined,
+          dockerImage,
+          services: selectedJob.services,
+          output,
+        });
+      }
 
       if (result.conclusion !== "succeeded") {
         anyFailed = true;
