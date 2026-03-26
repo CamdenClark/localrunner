@@ -39,3 +39,6 @@ actions-runner.tar.gz
 
 # Cursor
 .cursor/
+
+# Hugo
+website/public
