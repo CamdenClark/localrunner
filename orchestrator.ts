@@ -201,6 +201,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
   }
 
   function onSignal() {
+    output.markCancelled();
     cleanup();
     process.exit(1);
   }
@@ -278,6 +279,12 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
 
   // Give a moment for final logs to flush
   await new Promise((r) => setTimeout(r, 500));
+
+  // If the job wasn't completed via the server (e.g. runner crashed or was killed),
+  // mark the run as cancelled in the DB
+  if (!output.jobCompleted) {
+    output.markCancelled();
+  }
 
   // Clean up
   output.emit({ type: "info", message: "\nRunner finished. Stopping server..." });

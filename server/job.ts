@@ -1,6 +1,9 @@
 import { randomUUID } from "crypto";
 import { buildGitHubContextData } from "../context";
 import type { RunContext } from "./types";
+import { getDb } from "../db";
+import { runs, jobs } from "../db/schema";
+import { eq } from "drizzle-orm";
 
 export function jobRoutes(ctx: RunContext) {
   return {
@@ -49,6 +52,21 @@ export function jobRoutes(ctx: RunContext) {
         const conclusion = body.conclusion || "unknown";
         ctx.output.emit({ type: "server", tag: "job", message: `Job completed (${conclusion})` });
         ctx.output.emit({ type: "job_complete", conclusion });
+
+        ctx.output.flushAllLogs();
+        try {
+          const db = getDb();
+          const now = Date.now();
+          db.update(jobs)
+            .set({ status: "completed", conclusion, completedAt: now })
+            .where(eq(jobs.id, ctx.jobId))
+            .run();
+          db.update(runs)
+            .set({ status: "completed", conclusion, completedAt: now })
+            .where(eq(runs.id, ctx.runId))
+            .run();
+        } catch {}
+
         ctx.resolveJobCompleted(conclusion);
         return Response.json({});
       },

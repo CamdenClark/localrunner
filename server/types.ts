@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import type { RepoContext } from "../context";
 import { OutputHandler } from "../output";
+import { getDb } from "../db";
+import { runs, jobs } from "../db/schema";
 
 export interface ServerConfig {
   port: number;
@@ -96,6 +98,39 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     jobDone: false,
     resolveJobCompleted,
   };
+
+  output.runId = runId;
+  output.jobId = jobId;
+
+  try {
+    const db = getDb();
+    const now = Date.now();
+    db.insert(runs)
+      .values({
+        id: runId,
+        workflowName: config.workflowName,
+        jobName: config.jobName,
+        eventName: config.eventName,
+        eventPayload: JSON.stringify(config.eventPayload),
+        repoOwner: config.repoCtx.owner,
+        repoName: config.repoCtx.repo,
+        repoFullName: config.repoCtx.fullName,
+        sha: config.repoCtx.sha,
+        ref: config.repoCtx.ref,
+        status: "in_progress",
+        startedAt: now,
+      })
+      .run();
+    db.insert(jobs)
+      .values({
+        id: jobId,
+        runId,
+        name: config.jobName,
+        status: "in_progress",
+        startedAt: now,
+      })
+      .run();
+  } catch {}
 
   return { ctx, jobCompleted };
 }
