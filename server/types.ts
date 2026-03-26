@@ -13,6 +13,7 @@ export interface ServerConfig {
   secrets?: Record<string, string>;
   variables?: Record<string, string>;
   hostAddress?: string;
+  matrix?: Record<string, string>;
   runnerOs?: string;
   runnerArch?: string;
   output?: OutputHandler;
@@ -34,6 +35,7 @@ export interface RunContext {
   jobName: string;
   secrets: Record<string, string>;
   variables: Record<string, string>;
+  matrix: Record<string, string>;
   hostAddress: string;
   serverBaseUrl: string;
   runnerOs: string;
@@ -76,6 +78,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     jobName: config.jobName,
     secrets: config.secrets || {},
     variables: config.variables || {},
+    matrix: config.matrix || {},
     hostAddress,
     serverBaseUrl,
     runnerOs: config.runnerOs || "macOS",
