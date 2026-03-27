@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { topologicalSortJobs } from "./cli";
+import { topologicalSortJobs } from "./needs";
 
 describe("topologicalSortJobs", () => {
   test("single job with no dependencies", () => {
