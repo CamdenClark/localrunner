@@ -15,6 +15,7 @@ import { expandMatrix, filterMatrix, formatMatrixCombo } from "./matrix";
 import { detectOs, detectArch } from "./platform";
 import type { NeedsContext } from "./server/types";
 import { topologicalSortJobs, normalizeNeeds, conclusionToResult } from "./needs";
+import { parseInputArgs, validateInputs, type InputDefinition } from "./inputs";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -23,6 +24,7 @@ const { values, positionals } = parseArgs({
     job: { type: "string", short: "j" },
     secret: { type: "string", short: "s", multiple: true },
     "secret-file": { type: "string" },
+    input: { type: "string", short: "i", multiple: true },
     var: { type: "string", multiple: true },
     "var-file": { type: "string" },
     eventpath: { type: "string", short: "e" },
@@ -65,6 +67,7 @@ Flags:
   -j, --job <name>          Run a specific job
   -s, --secret <KEY=VAL>    Secret (use -s KEY to read from env)
   --secret-file <path>      Path to .env-style secrets file (default: .secrets)
+  -i, --input <KEY=VAL>      workflow_dispatch input value
   --var <KEY=VAL>            Variable
   --var-file <path>          Path to .env-style vars file (default: .vars)
   -e, --eventpath <path>    Path to event payload JSON (merges with defaults, e.g. {"action": "labeled"})
@@ -176,7 +179,7 @@ if (values["list-events"]) {
 }
 
 // --- Serve mode: default (no args/flags) or explicit "serve" subcommand ---
-const hasRunFlags = values.list || values.job || values.workflows || values.secret?.length || values.var?.length || values.eventpath || values.matrix?.length || values.raw || values.verbose;
+const hasRunFlags = values.list || values.job || values.workflows || values.secret?.length || values.var?.length || values.input?.length || values.eventpath || values.matrix?.length || values.raw || values.verbose;
 if (positionals[0] === "serve" || (positionals.length === 0 && !hasRunFlags)) {
   const port = parseInt(values.port || "9637", 10);
   const { createMultiRunApp, websocket } = await import("./server/hono");
@@ -438,18 +441,18 @@ async function main() {
       yamlText,
     });
 
-    // Extract workflow_dispatch input defaults
+    // Resolve workflow_dispatch inputs: merge CLI --input values over defaults, validate
     let inputDefaults: Record<string, string> | undefined;
     if (eventName === "workflow_dispatch") {
       const onConfig = normalizeOn(workflow.on);
-      const dispatchConfig = onConfig["workflow_dispatch"] as { inputs?: Record<string, { default?: string }> } | null;
-      if (dispatchConfig?.inputs) {
-        inputDefaults = {};
-        for (const [key, config] of Object.entries(dispatchConfig.inputs)) {
-          if (config?.default !== undefined) {
-            inputDefaults[key] = String(config.default);
-          }
-        }
+      const dispatchConfig = onConfig["workflow_dispatch"] as { inputs?: Record<string, InputDefinition> } | null;
+      const cliInputs = parseInputArgs(values.input);
+      try {
+        inputDefaults = validateInputs(dispatchConfig?.inputs, cliInputs);
+      } catch (err) {
+        console.error(`Error in ${basename(workflowPath)}: ${(err as Error).message}`);
+        anyFailed = true;
+        continue;
       }
     }
 
