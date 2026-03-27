@@ -47,8 +47,8 @@ function printUsage() {
     .map((def) => `  ${def!.name.padEnd(26)} ${def!.description}${def!.name === "push" ? " (default)" : ""}`)
     .join("\n");
 
-  console.log(`Usage: localrunner [event] [flags]
-       localrunner serve [--port 9637]
+  console.log(`Usage: localrunner [--port 9637]
+       localrunner <event> [flags]
 
 Events:
 ${eventLines}
@@ -56,7 +56,7 @@ ${eventLines}
   Use --list-events to see all ${EVENT_REGISTRY.size} supported events.
 
 Commands:
-  serve                     Start the long-lived server with web UI
+  serve                     Start the server with web UI (default, no args)
 
 Flags:
   -W, --workflows <path>    Workflow file or directory (default: .github/workflows/)
@@ -77,8 +77,8 @@ Flags:
   -h, --help                Show this help message
 
 Examples:
-  localrunner                                    # push event, auto-detect workflow
-  localrunner push                               # explicit push
+  localrunner                                    # start web UI server
+  localrunner push                               # push event, auto-detect workflow
   localrunner pull_request -j test               # specific job
   localrunner -l                                 # list all workflows
   localrunner push -l                            # list push workflows
@@ -173,8 +173,9 @@ if (values["list-events"]) {
   process.exit(0);
 }
 
-// --- Serve subcommand ---
-if (positionals[0] === "serve") {
+// --- Serve mode: default (no args/flags) or explicit "serve" subcommand ---
+const hasRunFlags = values.list || values.job || values.workflows || values.secret?.length || values.var?.length || values.eventpath || values.matrix?.length || values.raw || values.verbose;
+if (positionals[0] === "serve" || (positionals.length === 0 && !hasRunFlags)) {
   const port = parseInt(values.port || "9637", 10);
   const { createMultiRunApp, websocket } = await import("./server/hono");
   const { RunManager } = await import("./server/runs");
