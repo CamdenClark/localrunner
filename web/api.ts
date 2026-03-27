@@ -78,6 +78,25 @@ export function registerApiRoutes(app: Hono, runManager: RunManager, port: numbe
     });
   });
 
+  /**
+   * Cancel an active run.
+   * Marks the run as cancelled in the DB and resolves jobCompleted.
+   */
+  app.post("/api/runs/:id/cancel", (c) => {
+    const runId = c.req.param("id");
+    const ctx = runManager.getRunByRunId(runId);
+    if (!ctx) {
+      return c.json({ error: "Run not found or not active" }, 404);
+    }
+
+    if (!ctx.jobDone) {
+      ctx.output.markCancelled();
+      ctx.resolveJobCompleted("cancelled");
+    }
+
+    return c.json({ ok: true });
+  });
+
   // List runs from DB
   app.get("/api/runs", (c) => {
     const db = getDb();

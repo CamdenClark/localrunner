@@ -158,6 +158,7 @@ export async function launchRunner(opts: {
   let proc: ReturnType<typeof Bun.spawn> | undefined;
   let runnerContainerName: string | undefined;
   let cleanedUp = false;
+  let cancelled = false;
 
   function cleanup() {
     if (cleanedUp) return;
@@ -193,9 +194,15 @@ export async function launchRunner(opts: {
   }
 
   function onSignal() {
-    output.markCancelled();
-    cleanup();
-    process.exit(1);
+    cancelled = true;
+    // Kill the runner process to unblock the Promise.race below,
+    // letting the normal flow handle cleanup and return the result.
+    if (proc) {
+      try { proc.kill(); } catch {}
+    }
+    if (runnerContainerName) {
+      try { Bun.spawnSync(["docker", "rm", "-f", runnerContainerName]); } catch {}
+    }
   }
 
   process.on("SIGINT", onSignal);
@@ -261,7 +268,7 @@ export async function launchRunner(opts: {
 
   const conclusion = await Promise.race([
     jobCompleted,
-    runnerExit.then(() => "failed" as string),
+    runnerExit.then(() => "cancelled" as string),
   ]);
 
   await Promise.allSettled([stdoutPipe, stderrPipe]);
@@ -271,13 +278,13 @@ export async function launchRunner(opts: {
     output.markCancelled();
   }
 
-  output.emit({ type: "info", message: "\nRunner finished." });
+  output.emit({ type: "info", message: cancelled ? "\nRun cancelled." : "\nRunner finished." });
   cleanup();
 
   process.removeListener("SIGINT", onSignal);
   process.removeListener("SIGTERM", onSignal);
 
-  return { conclusion, logs: output.allLogs };
+  return { conclusion: cancelled ? "cancelled" : conclusion, logs: output.allLogs };
 }
 
 /**
@@ -337,7 +344,7 @@ export async function startRunOnServer(opts: {
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
 
-  return launchRunner({
+  const result = await launchRunner({
     port: ctx.port,
     hostAddress,
     dockerImage,
@@ -350,6 +357,13 @@ export async function startRunOnServer(opts: {
     stopServer: undefined,
     onComplete: () => runManager.completeRun(ctx.runId),
   });
+
+  // If cancelled and the server-side context doesn't know yet, resolve it
+  if (result.conclusion === "cancelled" && !ctx.jobDone) {
+    ctx.resolveJobCompleted("cancelled");
+  }
+
+  return result;
 }
 
 /**
@@ -460,6 +474,13 @@ export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResu
     // Don't stop the server — it's long-lived
     stopServer: undefined,
   });
+
+  // If the run was cancelled (Ctrl+C or runner killed), notify the server
+  if (result.conclusion === "cancelled") {
+    try {
+      await fetch(`http://localhost:${port}/api/runs/${runId}/cancel`, { method: "POST" });
+    } catch {}
+  }
 
   abortController.abort();
   return result;
