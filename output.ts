@@ -22,6 +22,63 @@ interface StepRecord {
   logs: string[];
 }
 
+/** Parse GitHub Actions annotations. Handles `##[cmd]msg` and `[command]msg` formats. */
+function parseAnnotation(line: string): { type: string; message: string } | null {
+  const match = line.match(/^##\[(\w+)](.*)/);
+  if (match) return { type: match[1], message: match[2] };
+  const cmdMatch = line.match(/^\[command](.*)/);
+  if (cmdMatch) return { type: "command", message: cmdMatch[1] };
+  return null;
+}
+
+/** Format an annotation for colored terminal output. */
+function formatAnnotation(ann: { type: string; message: string }): string | null {
+  switch (ann.type) {
+    case "warning":
+      return `\x1b[33m⚠ ${ann.message}\x1b[0m`;
+    case "error":
+      return `\x1b[31m✖ ${ann.message}\x1b[0m`;
+    case "notice":
+      return `\x1b[36mℹ ${ann.message}\x1b[0m`;
+    case "debug":
+      return `\x1b[90m${ann.message}\x1b[0m`;
+    case "group":
+      return `\x1b[1m▸ ${ann.message}\x1b[0m`;
+    case "endgroup":
+      return null; // suppress
+    case "command":
+      return `\x1b[90m$ ${ann.message}\x1b[0m`;
+    case "section":
+      return null; // internal, suppress
+    default:
+      return ann.message;
+  }
+}
+
+/** Format an annotation for verbose mode with tag labels. */
+function formatAnnotationVerbose(ann: { type: string; message: string }): string | null {
+  switch (ann.type) {
+    case "warning":
+      return `\x1b[33m[warning] ${ann.message}\x1b[0m`;
+    case "error":
+      return `\x1b[31m[error] ${ann.message}\x1b[0m`;
+    case "notice":
+      return `\x1b[36m[notice] ${ann.message}\x1b[0m`;
+    case "debug":
+      return `\x1b[90m[debug] ${ann.message}\x1b[0m`;
+    case "group":
+      return `\x1b[1m[group] ${ann.message}\x1b[0m`;
+    case "endgroup":
+      return `[endgroup]`;
+    case "command":
+      return `\x1b[90m[command] ${ann.message}\x1b[0m`;
+    case "section":
+      return null;
+    default:
+      return `[${ann.type}] ${ann.message}`;
+  }
+}
+
 export class OutputHandler {
   mode: OutputMode;
   steps: Map<string, StepRecord> = new Map();
@@ -102,10 +159,17 @@ export class OutputHandler {
         this.print(`  [step] ${icon} ${event.stepName}: Completed (${event.conclusion})`);
         break;
       }
-      case "step_log":
+      case "step_log": {
         this.bufferStepLog(event.line);
-        this.print(`  [log] ${event.line}`);
+        const ann = parseAnnotation(event.line);
+        if (ann) {
+          const formatted = formatAnnotationVerbose(ann);
+          if (formatted !== null) this.print(`  [log] ${formatted}`);
+        } else {
+          this.print(`  [log] ${event.line}`);
+        }
         break;
+      }
       case "runner":
         this.print(`  [runner${event.stream === "stderr" ? ":err" : ""}] ${event.line}`);
         break;
@@ -194,6 +258,12 @@ export class OutputHandler {
     }
   }
 
+  private formatLogLine(line: string): string | null {
+    const ann = parseAnnotation(line);
+    if (ann) return formatAnnotation(ann);
+    return line;
+  }
+
   private dumpFailedStepLogs(): void {
     for (const [, step] of this.steps) {
       if (step.conclusion && step.conclusion !== "succeeded" && step.conclusion !== "skipped" && step.logs.length > 0) {
@@ -202,7 +272,8 @@ export class OutputHandler {
         console.log();
         console.log(`  ${header}${rule}`);
         for (const line of step.logs) {
-          console.log(`  ${line}`);
+          const formatted = this.formatLogLine(line);
+          if (formatted !== null) console.log(`  ${formatted}`);
         }
         console.log(`  ${"─".repeat(44)}`);
       }

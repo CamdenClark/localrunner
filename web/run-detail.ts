@@ -78,6 +78,37 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Parse and render a log line, handling ##[annotation] syntax. */
+function renderLogLine(content: string) {
+  let match = content.match(/^##\[(\w+)](.*)/);
+  if (!match) match = content.match(/^\[command](.*)/);
+  if (!match) return html`<div class="log-line">${content}</div>`;
+  // Normalize [command] match to have same shape
+  if (match.length === 2) match = [match[0], "command", match[1]] as unknown as RegExpMatchArray;
+
+  const [, type, message] = match;
+  switch (type) {
+    case "warning":
+      return html`<div class="log-line log-warning">⚠ ${message}</div>`;
+    case "error":
+      return html`<div class="log-line log-error">✖ ${message}</div>`;
+    case "notice":
+      return html`<div class="log-line log-notice">ℹ ${message}</div>`;
+    case "debug":
+      return html`<div class="log-line log-debug">${message}</div>`;
+    case "group":
+      return html`<div class="log-line log-group">▸ ${message}</div>`;
+    case "endgroup":
+      return html``;
+    case "command":
+      return html`<div class="log-line log-command">$ ${message}</div>`;
+    case "section":
+      return html``;
+    default:
+      return html`<div class="log-line">${content}</div>`;
+  }
+}
+
 export function runDetailPage(run: Run, jobs: Job[], steps: Step[], logs: StepLog[], artifacts: Artifact[]) {
   const isActive = run.status === "in_progress" || run.status === "queued";
 
@@ -168,7 +199,7 @@ export function runDetailContent(run: Run, jobs: Job[], steps: Step[], logs: Ste
                       <span class="step-meta">${duration(step.startedAt, step.completedAt)}</span>
                     </div>
                     ${stepLogs.length > 0
-                      ? html`<div class="step-body"><div class="logs">${stepLogs.map((l) => html`<div class="log-line">${l.content || ""}</div>`)}</div></div>`
+                      ? html`<div class="step-body"><div class="logs">${stepLogs.map((l) => renderLogLine(l.content || ""))}</div></div>`
                       : html``
                     }
                   </div>
