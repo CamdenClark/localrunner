@@ -25,6 +25,7 @@ export interface RunConfig {
   dockerImage?: string;
   services?: Record<string, Service>;
   output?: OutputHandler;
+  timeoutMinutes?: number;
   jobOutputDefs?: Record<string, string>;
 }
 
@@ -80,8 +81,10 @@ export async function launchRunner(opts: {
   stopServer?: () => void;
   /** Called when the run finishes */
   onComplete?: () => void;
+  /** Job-level timeout in minutes. Defaults to 360 (GitHub's default). */
+  timeoutMinutes?: number;
 }): Promise<RunResult> {
-  const { port, hostAddress, dockerImage, runnerDir, eventPayload, services, output, jobCompleted, stopServer, onComplete } = opts;
+  const { port, hostAddress, dockerImage, runnerDir, eventPayload, services, output, jobCompleted, stopServer, onComplete, timeoutMinutes = 360 } = opts;
   const isDocker = !!dockerImage;
 
   // Write event.json to a temp directory for the runner
@@ -275,9 +278,25 @@ export async function launchRunner(opts: {
 
   const runnerExit = proc!.exited;
 
+  const timeoutMs = timeoutMinutes * 60 * 1000;
+  const timeoutPromise = new Promise<string>((resolve) => {
+    setTimeout(() => {
+      output.emit({ type: "info", message: `\nJob timed out after ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}.` });
+      cancelled = true;
+      if (proc) {
+        try { proc.kill(); } catch {}
+      }
+      if (runnerContainerName) {
+        try { Bun.spawnSync(["docker", "rm", "-f", runnerContainerName]); } catch {}
+      }
+      resolve("cancelled");
+    }, timeoutMs);
+  });
+
   const conclusion = await Promise.race([
     jobCompleted,
     runnerExit.then(() => "cancelled" as string),
+    timeoutPromise,
   ]);
 
   await Promise.allSettled([stdoutPipe, stderrPipe]);
@@ -337,6 +356,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     output,
     jobCompleted,
     stopServer: () => server.stop(true),
+    timeoutMinutes: config.timeoutMinutes,
   });
 
   return { ...result, outputs: ctx.jobOutputs };
@@ -354,6 +374,7 @@ export async function startRunOnServer(opts: {
   dockerImage?: string;
   services?: Record<string, Service>;
   output: OutputHandler;
+  timeoutMinutes?: number;
 }): Promise<RunResult> {
   const { ctx, jobCompleted, runManager, runnerDir, dockerImage, services, output } = opts;
   const isDocker = !!dockerImage;
@@ -371,6 +392,7 @@ export async function startRunOnServer(opts: {
     // Don't stop the server — it's long-lived
     stopServer: undefined,
     onComplete: () => runManager.completeRun(ctx.runId),
+    timeoutMinutes: opts.timeoutMinutes,
   });
 
   // If cancelled and the server-side context doesn't know yet, resolve it
@@ -492,6 +514,7 @@ export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResu
     jobCompleted,
     // Don't stop the server — it's long-lived
     stopServer: undefined,
+    timeoutMinutes: config.timeoutMinutes,
   });
 
   // If the run was cancelled (Ctrl+C or runner killed), notify the server
