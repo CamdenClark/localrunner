@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { Service } from "./workflow";
 import { OutputHandler } from "./output";
-import type { RunContext } from "./server/types";
+import type { RunContext, NeedsContext } from "./server/types";
 import type { RunManager } from "./server/runs";
 import { detectOs, detectArch } from "./platform";
 
@@ -21,6 +21,7 @@ export interface RunConfig {
   matrix?: Record<string, string>;
   strategy?: ServerConfig["strategy"];
   inputs?: Record<string, string>;
+  needs?: NeedsContext;
   dockerImage?: string;
   services?: Record<string, Service>;
   output?: OutputHandler;
@@ -57,6 +58,7 @@ function buildJitConfig(port: number, hostAddress: string): string {
 
 export interface RunResult {
   conclusion: string;
+  outputs: Record<string, string>;
   logs: string[];
 }
 
@@ -290,7 +292,7 @@ export async function launchRunner(opts: {
   process.removeListener("SIGINT", onSignal);
   process.removeListener("SIGTERM", onSignal);
 
-  return { conclusion: cancelled ? "cancelled" : conclusion, logs: output.allLogs };
+  return { conclusion: cancelled ? "cancelled" : conclusion, outputs: {}, logs: output.allLogs };
 }
 
 /**
@@ -298,12 +300,12 @@ export async function launchRunner(opts: {
  * Creates a server, runs the job, stops the server when done.
  */
 export async function startRun(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, dockerImage, services, output: configOutput } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, needs, dockerImage, services, output: configOutput } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
 
-  const { server, jobCompleted, output } = createServer({
+  const { server, jobCompleted, output, ctx } = createServer({
     port,
     repoCtx,
     jobSteps,
@@ -316,13 +318,14 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     matrix,
     strategy,
     inputs,
+    needs,
     hostAddress,
     runnerOs: isDocker ? "Linux" : detectOs(),
     runnerArch: isDocker ? "X64" : detectArch(),
     output: configOutput,
   });
 
-  return launchRunner({
+  const result = await launchRunner({
     port,
     hostAddress,
     dockerImage,
@@ -333,6 +336,8 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     jobCompleted,
     stopServer: () => server.stop(true),
   });
+
+  return { ...result, outputs: ctx.jobOutputs };
 }
 
 /**
@@ -384,7 +389,7 @@ export async function startRunOnServer(opts: {
  * 4. Waits for job completion (signaled via SSE)
  */
 export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, dockerImage, services, output: configOutput } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, needs, dockerImage, services, output: configOutput } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
@@ -407,6 +412,7 @@ export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResu
         matrix,
         strategy,
         inputs,
+        needs,
         hostAddress,
         runnerOs: isDocker ? "Linux" : detectOs(),
         runnerArch: isDocker ? "X64" : detectArch(),

@@ -50,6 +50,19 @@ export function registerJobRoutes(app: Hono<ServerEnv>, ctx: RunContext) {
     ctx.jobDone = true;
     const body = (await c.req.json()) as any;
     const conclusion = body.conclusion || "unknown";
+
+    // Capture job outputs from the runner's completion message
+    if (body.outputVariables) {
+      for (const [key, val] of Object.entries(body.outputVariables)) {
+        ctx.jobOutputs[key] = typeof val === "object" && val !== null ? (val as any).value ?? String(val) : String(val);
+      }
+    }
+    if (body.outputs) {
+      for (const [key, val] of Object.entries(body.outputs)) {
+        ctx.jobOutputs[key] = typeof val === "object" && val !== null ? (val as any).value ?? String(val) : String(val);
+      }
+    }
+
     ctx.output.emit({ type: "server", tag: "job", message: `Job completed (${conclusion})` });
     ctx.output.emit({ type: "job_complete", conclusion });
 
@@ -151,6 +164,25 @@ function buildJobMessage(ctx: RunContext): object {
         t: 2,
         d: Object.entries(ctx.inputs).map(([k, v]) => ({ k, v })),
       },
+      needs: {
+        t: 2,
+        d: Object.entries(ctx.needs).map(([jobId, need]) => ({
+          k: jobId,
+          v: {
+            t: 2,
+            d: [
+              { k: "result", v: need.result },
+              {
+                k: "outputs",
+                v: {
+                  t: 2,
+                  d: Object.entries(need.outputs).map(([k, v]) => ({ k, v })),
+                },
+              },
+            ],
+          },
+        })),
+      },
       job: { t: 2, d: [] },
       runner: {
         t: 2,
@@ -193,6 +225,9 @@ function buildJobMessage(ctx: RunContext): object {
     mask: [
       ...Object.values(ctx.secrets).filter((v) => v.length > 0).map((v) => ({ type: "regex", value: v })),
     ],
+    // Note: job output definitions are not passed to the runner because the
+    // runner's template engine cannot evaluate them in our protocol format.
+    // Job outputs require future work to capture step outputs server-side.
     steps: ctx.jobSteps,
     workspace: { clean: null },
     fileTable: [],

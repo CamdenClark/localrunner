@@ -1,5 +1,6 @@
 import type { RepoContext } from "./context";
 import { detectOs, detectArch } from "./platform";
+import type { NeedsContext } from "./server/types";
 
 // Build a flat lookup table for ${{ expr }} evaluation
 export function buildExpressionContext(
@@ -13,6 +14,7 @@ export function buildExpressionContext(
   variables?: Record<string, string>,
   matrix?: Record<string, string>,
   runnerInfo?: { os: string; arch: string },
+  needs?: NeedsContext,
 ): Record<string, string> {
   const ctx: Record<string, string> = {};
 
@@ -93,6 +95,17 @@ export function buildExpressionContext(
   if (matrix) {
     for (const [k, v] of Object.entries(matrix)) {
       ctx[`matrix.${k}`] = v;
+    }
+  }
+
+  // needs context
+  if (needs) {
+    for (const [jobId, need] of Object.entries(needs)) {
+      ctx[`needs.${jobId}.result`] = need.result;
+      ctx[`needs.${jobId}.outputs`] = JSON.stringify(need.outputs);
+      for (const [k, v] of Object.entries(need.outputs)) {
+        ctx[`needs.${jobId}.outputs.${k}`] = v;
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { evaluateExpressions, buildExpressionContext } from "./expressions";
 import type { RepoContext } from "./context";
+import type { NeedsContext } from "./server/types";
 import { detectOs, detectArch } from "./platform";
 
 // Helper to build expression strings without triggering JS template parsing
@@ -550,5 +551,59 @@ describe("expression evaluation integration", () => {
     const ctx = buildExpressionContext(mockCtx, "issue_comment", payload, "wf", "job");
     const result = evaluateExpressions(expr("github.event.issue.labels.*.name"), ctx);
     expect(JSON.parse(result)).toEqual(["bug", "urgent"]);
+  });
+});
+
+describe("needs context", () => {
+  const needs: NeedsContext = {
+    build: {
+      result: "success",
+      outputs: {
+        version: "1.2.3",
+        artifact_name: "my-app",
+      },
+    },
+    test: {
+      result: "failure",
+      outputs: {},
+    },
+  };
+
+  test("evaluates needs.<job>.result", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "deploy", undefined, undefined, undefined, undefined, undefined, needs);
+    expect(evaluateExpressions(expr("needs.build.result"), ctx)).toBe("success");
+    expect(evaluateExpressions(expr("needs.test.result"), ctx)).toBe("failure");
+  });
+
+  test("evaluates needs.<job>.outputs.<key>", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "deploy", undefined, undefined, undefined, undefined, undefined, needs);
+    expect(evaluateExpressions(expr("needs.build.outputs.version"), ctx)).toBe("1.2.3");
+    expect(evaluateExpressions(expr("needs.build.outputs.artifact_name"), ctx)).toBe("my-app");
+  });
+
+  test("returns empty string for unknown needs job", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "deploy", undefined, undefined, undefined, undefined, undefined, needs);
+    expect(evaluateExpressions(expr("needs.unknown.result"), ctx)).toBe("");
+  });
+
+  test("returns empty string for unknown needs output", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "deploy", undefined, undefined, undefined, undefined, undefined, needs);
+    expect(evaluateExpressions(expr("needs.build.outputs.nonexistent"), ctx)).toBe("");
+  });
+
+  test("evaluates needs.<job>.outputs as JSON object", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "deploy", undefined, undefined, undefined, undefined, undefined, needs);
+    const result = evaluateExpressions(expr("needs.build.outputs"), ctx);
+    expect(JSON.parse(result)).toEqual({ version: "1.2.3", artifact_name: "my-app" });
+  });
+
+  test("works with empty needs", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "deploy", undefined, undefined, undefined, undefined, undefined, {});
+    expect(evaluateExpressions(expr("needs.build.result"), ctx)).toBe("");
+  });
+
+  test("works without needs parameter", () => {
+    const ctx = buildExpressionContext(mockCtx, "push", {}, "wf", "deploy");
+    expect(evaluateExpressions(expr("needs.build.result"), ctx)).toBe("");
   });
 });
