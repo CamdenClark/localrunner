@@ -19,6 +19,8 @@ export interface RunConfig {
   secrets?: Record<string, string>;
   variables?: Record<string, string>;
   matrix?: Record<string, string>;
+  strategy?: ServerConfig["strategy"];
+  inputs?: Record<string, string>;
   dockerImage?: string;
   services?: Record<string, Service>;
   output?: OutputHandler;
@@ -292,7 +294,7 @@ export async function launchRunner(opts: {
  * Creates a server, runs the job, stops the server when done.
  */
 export async function startRun(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, dockerImage, services, output: configOutput } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, dockerImage, services, output: configOutput } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
@@ -308,6 +310,8 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     secrets,
     variables,
     matrix,
+    strategy,
+    inputs,
     hostAddress,
     runnerOs: isDocker ? "Linux" : detectOs(),
     runnerArch: isDocker ? "X64" : detectArch(),
@@ -376,7 +380,7 @@ export async function startRunOnServer(opts: {
  * 4. Waits for job completion (signaled via SSE)
  */
 export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, dockerImage, services, output: configOutput } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, dockerImage, services, output: configOutput } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
@@ -397,6 +401,8 @@ export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResu
         secrets,
         variables,
         matrix,
+        strategy,
+        inputs,
         hostAddress,
         runnerOs: isDocker ? "Linux" : detectOs(),
         runnerArch: isDocker ? "X64" : detectArch(),

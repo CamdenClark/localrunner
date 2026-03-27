@@ -134,10 +134,22 @@ function buildJobMessage(ctx: RunContext): object {
     },
     contextData: {
       github: buildGitHubContextData(ctx.repoCtx, ctx.eventName, ctx.eventPayload, ctx.workflowName, ctx.jobName, ctx.runId, workspace),
-      strategy: { t: 2, d: [] },
+      strategy: {
+        t: 2,
+        d: [
+          { k: "fail-fast", v: String(ctx.strategy.failFast) },
+          { k: "job-index", v: String(ctx.strategy.jobIndex) },
+          { k: "job-total", v: String(ctx.strategy.jobTotal) },
+          ...(ctx.strategy.maxParallel != null ? [{ k: "max-parallel", v: String(ctx.strategy.maxParallel) }] : []),
+        ],
+      },
       matrix: {
         t: 2,
         d: Object.entries(ctx.matrix).map(([k, v]) => ({ k, v })),
+      },
+      inputs: {
+        t: 2,
+        d: Object.entries(ctx.inputs).map(([k, v]) => ({ k, v })),
       },
       job: { t: 2, d: [] },
       runner: {

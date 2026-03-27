@@ -4,6 +4,10 @@ export interface StepOptions {
   condition?: string;
   continueOnError?: boolean;
   environment?: Record<string, string>;
+  stepId?: string;
+  shell?: string;
+  workingDirectory?: string;
+  timeoutMinutes?: number;
 }
 
 // If condition contains a status function, use as-is; otherwise wrap with success()
@@ -19,22 +23,27 @@ export function scriptStep(
   displayName?: string,
   opts?: StepOptions,
 ): object {
+  const inputMap: { Key: string; Value: string }[] = [{ Key: "script", Value: script }];
+  if (opts?.shell) inputMap.push({ Key: "shell", Value: opts.shell });
+  if (opts?.workingDirectory) inputMap.push({ Key: "workingDirectory", Value: opts.workingDirectory });
+
   return {
     type: "Action",
     reference: { type: "Script" },
     id: randomUUID(),
     name: "__run",
     displayName: displayName || `Run ${script.slice(0, 40)}`,
-    contextName: `run_${randomUUID().slice(0, 8)}`,
+    contextName: opts?.stepId || `run_${randomUUID().slice(0, 8)}`,
     condition: resolveCondition(opts?.condition),
     inputs: {
       type: 2,
-      map: [{ Key: "script", Value: script }],
+      map: inputMap,
     },
     ...(opts?.environment ? {
       environment: { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) },
     } : {}),
     ...(opts?.continueOnError ? { continueOnError: true } : {}),
+    ...(opts?.timeoutMinutes ? { timeoutInMinutes: opts.timeoutMinutes } : {}),
   };
 }
 
@@ -69,7 +78,7 @@ export function actionStep(
     id: randomUUID(),
     name: action,
     displayName: displayName || `Run ${action}@${ref}`,
-    contextName: action.replace(/[^a-zA-Z0-9]/g, "_"),
+    contextName: opts?.stepId || action.replace(/[^a-zA-Z0-9]/g, "_"),
     condition: resolveCondition(opts?.condition),
     inputs: {
       type: 2,
@@ -79,5 +88,6 @@ export function actionStep(
       environment: { type: 2, map: Object.entries(opts.environment).map(([k, v]) => ({ Key: k, Value: v })) },
     } : {}),
     ...(opts?.continueOnError ? { continueOnError: true } : {}),
+    ...(opts?.timeoutMinutes ? { timeoutInMinutes: opts.timeoutMinutes } : {}),
   };
 }
