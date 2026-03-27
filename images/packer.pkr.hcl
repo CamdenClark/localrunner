@@ -153,9 +153,8 @@ build {
 
     post-processor "shell-local" {
       inline = var.docker_push ? [
-        "crane auth login ${var.docker_login_server} -u ${var.docker_login_username} -p ${var.docker_login_password}",
-        "docker save ${var.docker_repository}:${var.image_os} | crane push --chunk-size=200000000 - ${var.docker_repository}:${var.image_os}",
-        "docker save ${var.docker_repository}:${var.image_os}-${local.timestamp} | crane push --chunk-size=200000000 - ${var.docker_repository}:${var.image_os}-${local.timestamp}",
+        "echo ${var.docker_login_password} | USERNAME_REGISTRY=${var.docker_login_username} bun run ${var.push_tool_dir}/index.ts ${var.docker_repository}:${var.image_os}",
+        "echo ${var.docker_login_password} | USERNAME_REGISTRY=${var.docker_login_username} bun run ${var.push_tool_dir}/index.ts ${var.docker_repository}:${var.image_os}-${local.timestamp}",
       ] : ["echo 'Skipping push'"]
     }
   }

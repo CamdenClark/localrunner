@@ -47,10 +47,14 @@ jobs:
         with:
           version: latest
 
-      - name: Install crane
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Clone and install push tool
         run: |
-          VERSION=$(curl -s https://api.github.com/repos/google/go-containerregistry/releases/latest | jq -r .tag_name)
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/${VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | sudo tar -xzf - -C /usr/local/bin crane
+          git clone https://github.com/CamdenClark/localactions-registry.git /tmp/localactions-registry
+          cd /tmp/localactions-registry/push
+          bun install
 
       - name: Initialize Packer
         if: >-
@@ -74,4 +78,5 @@ jobs:
             -var "docker_login_server=${REGISTRY}" \
             -var "docker_login_username=${{ secrets.REGISTRY_USERNAME }}" \
             -var "docker_login_password=${{ secrets.REGISTRY_PASSWORD }}" \
+            -var "push_tool_dir=/tmp/localactions-registry/push" \
             .

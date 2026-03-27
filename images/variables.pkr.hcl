@@ -45,6 +45,12 @@ variable "docker_login_password" {
   description = "Docker registry login password/token"
 }
 
+variable "push_tool_dir" {
+  type        = string
+  default     = "../push-tool"
+  description = "Path to the chunked push tool directory"
+}
+
 variable "runner_version" {
   type        = string
   default     = ""
