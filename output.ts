@@ -119,6 +119,22 @@ export class OutputHandler {
       this.jobCompleted = true;
     }
 
+    // Detect post-run steps: if a step_start arrives for a name that already completed,
+    // rename it to "Post <name>" so it's tracked as a separate step.
+    if (event.type === "step_start") {
+      const existing = this.steps.get(event.stepName);
+      if (existing?.completedAt) {
+        event = { ...event, stepName: `Post ${event.stepName}` };
+      }
+    } else if (event.type === "step_complete") {
+      const existing = this.steps.get(event.stepName);
+      if (existing?.completedAt) {
+        event = { ...event, stepName: `Post ${event.stepName}` };
+      } else if (!existing && this.steps.has(`Post ${event.stepName}`)) {
+        event = { ...event, stepName: `Post ${event.stepName}` };
+      }
+    }
+
     // Notify subscribers
     for (const fn of this.subscribers) {
       fn(event);
@@ -310,10 +326,14 @@ export class OutputHandler {
 
   private trackStepComplete(name: string, conclusion: string, timestamp: number): void {
     const step = this.steps.get(name);
+    const hadStarted = !!step;
     if (step) {
       if (step.completedAt) return; // dedup
       step.completedAt = timestamp;
       step.conclusion = conclusion;
+    } else {
+      // Step completed without a prior start event — create the record now.
+      this.steps.set(name, { name, startedAt: timestamp, completedAt: timestamp, conclusion, logs: [] });
     }
     if (this.currentStep === name) {
       this.currentStep = null;
@@ -321,14 +341,31 @@ export class OutputHandler {
 
     if (this.jobId) {
       try {
-        const stepId = this.stepUuids.get(name);
-        if (stepId) {
-          const db = getDb();
+        const db = getDb();
+        const stepId = this.stepUuids.get(name) || randomUUID();
+        if (hadStarted) {
+          // DB row was inserted by trackStepStart — update it.
           db.update(stepsTable)
             .set({ status: "completed", conclusion, completedAt: timestamp })
             .where(eq(stepsTable.id, stepId))
             .run();
           this.flushStepLogs(name);
+        } else {
+          // No start event was received — insert a completed row directly.
+          const order = this.stepSortOrder++;
+          db.insert(stepsTable)
+            .values({
+              id: stepId,
+              jobId: this.jobId,
+              name,
+              status: "completed",
+              conclusion,
+              startedAt: timestamp,
+              completedAt: timestamp,
+              sortOrder: order,
+            })
+            .run();
+          this.stepUuids.set(name, stepId);
         }
       } catch {}
     }
