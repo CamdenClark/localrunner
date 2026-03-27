@@ -13,11 +13,12 @@ import { parseWorkflow, normalizeOn } from "../workflow";
 import type { RunManager } from "../server/runs";
 
 export function registerWebRoutes(app: Hono, runManager: RunManager, port: number) {
-  // Dashboard — list of recent runs
-  app.get("/", (c) => {
+  // Dashboard — list of recent runs + quick-run cards
+  app.get("/", async (c) => {
     const db = getDb();
     const allRuns = db.select().from(runs).orderBy(desc(runs.startedAt)).limit(50).all();
-    return c.html(layout("Runs", runsPage(allRuns)));
+    const workflows = await discoverWorkflows();
+    return c.html(layout("Runs", runsPage(allRuns, workflows)));
   });
 
   // HTMX partial — refreshable runs table
