@@ -43,7 +43,7 @@ function duration(start: number | null, end: number | null): string {
 
 export function runsTable(runs: Run[]) {
   if (runs.length === 0) {
-    return html`<div class="empty">No runs yet. Trigger one with <code>localrunner push</code></div>`;
+    return html`<div class="empty">No runs yet. Trigger one with <code>localactions push</code></div>`;
   }
 
   return html`

@@ -8,4 +8,4 @@ jobs:
       - name: Show files
         run: ls -la
       - name: Hello
-        run: echo "Hello from localrunner!"
+        run: echo "Hello from localactions!"

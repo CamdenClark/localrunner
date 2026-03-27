@@ -11,10 +11,10 @@ let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 export function getDb() {
   if (db) return db;
 
-  const dir = join(homedir(), ".localrunner");
+  const dir = join(homedir(), ".localactions");
   mkdirSync(dir, { recursive: true });
 
-  const dbPath = join(dir, "localrunner.db");
+  const dbPath = join(dir, "localactions.db");
   const sqlite = new Database(dbPath);
   sqlite.exec("PRAGMA journal_mode=WAL");
 

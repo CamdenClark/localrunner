@@ -40,7 +40,7 @@ async function resolveActions(
         {
           headers: {
             Accept: "application/vnd.github.v3+json",
-            "User-Agent": "localrunner",
+            "User-Agent": "localactions",
             Authorization: `Bearer ${token}`,
           },
         },
@@ -55,7 +55,7 @@ async function resolveActions(
           const tagRes = await fetch(refData.object.url, {
             headers: {
               Accept: "application/vnd.github.v3+json",
-              "User-Agent": "localrunner",
+              "User-Agent": "localactions",
               Authorization: `Bearer ${token}`,
             },
           });
@@ -70,7 +70,7 @@ async function resolveActions(
           {
             headers: {
               Accept: "application/vnd.github.v3+json",
-              "User-Agent": "localrunner",
+              "User-Agent": "localactions",
               Authorization: `Bearer ${token}`,
             },
           },

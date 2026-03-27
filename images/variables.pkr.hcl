@@ -10,13 +10,13 @@ variable "image_family" {
 
 variable "image_description" {
   type        = string
-  default     = "localrunner pre-built runner image"
+  default     = "localactions pre-built runner image"
   description = "Description for the output image"
 }
 
 variable "docker_repository" {
   type        = string
-  default     = "localrunner"
+  default     = "localactions"
   description = "Docker repository name for tagging (e.g. ghcr.io/owner/repo)"
 }
 

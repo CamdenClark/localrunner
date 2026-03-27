@@ -50,10 +50,10 @@ build {
   }
 
   ###########################################################################
-  # localrunner-specific: Create runner user
+  # localactions-specific: Create runner user
   ###########################################################################
   provisioner "shell" {
-    script = "scripts/localrunner/configure-runner-user.sh"
+    script = "scripts/localactions/configure-runner-user.sh"
   }
 
   ###########################################################################
@@ -120,11 +120,11 @@ build {
   }
 
   ###########################################################################
-  # localrunner-specific: Runner agent
+  # localactions-specific: Runner agent
   ###########################################################################
   provisioner "shell" {
     environment_vars = ["RUNNER_VERSION=${var.runner_version}"]
-    script           = "scripts/localrunner/install-runner-agent.sh"
+    script           = "scripts/localactions/install-runner-agent.sh"
   }
 
   ###########################################################################

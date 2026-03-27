@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set image name
-        run: echo "IMAGE_NAME=$(echo '${{ github.repository_owner }}/localrunner' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository_owner }}/localactions' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Setup Packer
         uses: hashicorp/setup-packer@main

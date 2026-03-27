@@ -7,7 +7,7 @@ export function layout(title: string, content: HtmlEscapedString) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title} — localrunner</title>
+  <title>${title} — localactions</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
   <style>
@@ -242,7 +242,7 @@ export function layout(title: string, content: HtmlEscapedString) {
 <body>
   <header>
     <div class="container">
-      <h1><a href="/" style="color: inherit;">localrunner</a></h1>
+      <h1><a href="/" style="color: inherit;">localactions</a></h1>
       <nav>
         <a href="/workflows">All Workflows</a>
       </nav>

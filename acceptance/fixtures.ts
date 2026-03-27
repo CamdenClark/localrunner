@@ -28,7 +28,7 @@ export const fixtures: AcceptanceFixture[] = [
   },
   {
     name: "services — redis",
-    repo: "CamdenClark/localrunner-tests",
+    repo: "CamdenClark/localactions-tests",
     commit: "a3cf6f698c5269c92e9d411b90a7ee227dbe48f5",
     workflow: ".github/workflows/redis-service.yml",
     event: "push",
@@ -36,7 +36,7 @@ export const fixtures: AcceptanceFixture[] = [
   },
   {
     name: "artifacts — upload",
-    repo: "CamdenClark/localrunner-tests",
+    repo: "CamdenClark/localactions-tests",
     commit: "a2de9845095610494921f28920adfafc183c3ec7",
     workflow: ".github/workflows/artifact-upload.yml",
     event: "push",

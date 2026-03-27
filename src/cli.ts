@@ -59,8 +59,8 @@ function printUsage() {
     .map((def) => `  ${def!.name.padEnd(26)} ${def!.description}${def!.name === "push" ? " (default)" : ""}`)
     .join("\n");
 
-  console.log(`Usage: localrunner [--port 9637]
-       localrunner <event> [flags]
+  console.log(`Usage: localactions [--port 9637]
+       localactions <event> [flags]
 
 Events:
 ${eventLines}
@@ -90,15 +90,15 @@ Flags:
   -h, --help                Show this help message
 
 Examples:
-  localrunner                                    # start web UI server
-  localrunner push                               # push event, auto-detect workflow
-  localrunner pull_request -j test               # specific job
-  localrunner -l                                 # list all workflows
-  localrunner push -l                            # list push workflows
-  localrunner push -W .github/workflows/ci.yml   # specific workflow
-  localrunner push -s MY_SECRET=foo              # with secret
-  localrunner push --matrix node:18              # filter matrix
-  localrunner pull_request --help                 # show event activity types & sample payload`);
+  localactions                                    # start web UI server
+  localactions push                               # push event, auto-detect workflow
+  localactions pull_request -j test               # specific job
+  localactions -l                                 # list all workflows
+  localactions push -l                            # list push workflows
+  localactions push -W .github/workflows/ci.yml   # specific workflow
+  localactions push -s MY_SECRET=foo              # with secret
+  localactions push --matrix node:18              # filter matrix
+  localactions pull_request --help                 # show event activity types & sample payload`);
 }
 
 if (values.help && positionals[0]) {
@@ -157,7 +157,7 @@ if (values.help && positionals[0]) {
     console.log(JSON.stringify(payload, null, 2));
   }
 
-  console.log(`\nOverride with: localrunner ${def.name} -e payload.json`);
+  console.log(`\nOverride with: localactions ${def.name} -e payload.json`);
   process.exit(0);
 }
 
@@ -204,11 +204,11 @@ if (positionals[0] === "serve" || (positionals.length === 0 && !hasRunFlags)) {
 
   const server = Bun.serve({ port, fetch: app.fetch, websocket });
 
-  console.log(`localrunner server listening on http://localhost:${port}`);
+  console.log(`localactions server listening on http://localhost:${port}`);
   console.log(`Web UI: http://localhost:${port}/`);
   console.log(`Press Ctrl+C to stop.\n`);
 
-  const pidFile = `${process.env.HOME}/.localrunner/server.pid`;
+  const pidFile = `${process.env.HOME}/.localactions/server.pid`;
   await Bun.write(pidFile, String(process.pid));
 
   process.on("SIGINT", () => {
@@ -312,7 +312,7 @@ async function main() {
 
   const serverRunning = await isServerRunning();
 
-  console.log("=== localrunner ===\n");
+  console.log("=== localactions ===\n");
   if (serverRunning) {
     console.log(`Using running server on port ${port}\n`);
   }
@@ -334,7 +334,7 @@ async function main() {
 
     if (workflowMatches.length === 0) {
       console.error(`Error: no workflows found that trigger on '${eventName}'`);
-      console.error("Specify a workflow file explicitly: localrunner <event> -W <workflow-file>");
+      console.error("Specify a workflow file explicitly: localactions <event> -W <workflow-file>");
       return process.exit(1);
     }
   }
@@ -361,9 +361,9 @@ async function main() {
   const runnerDir = resolve(import.meta.dir, "runner");
 
   const DEFAULT_IMAGES: Record<string, string> = {
-    "ubuntu-latest": "ghcr.io/camdenclark/localrunner:ubuntu24",
-    "ubuntu-24.04": "ghcr.io/camdenclark/localrunner:ubuntu24",
-    "ubuntu-22.04": "ghcr.io/camdenclark/localrunner:ubuntu22",
+    "ubuntu-latest": "ghcr.io/camdenclark/localactions:ubuntu24",
+    "ubuntu-24.04": "ghcr.io/camdenclark/localactions:ubuntu24",
+    "ubuntu-22.04": "ghcr.io/camdenclark/localactions:ubuntu22",
   };
 
   // Parse --platform overrides (e.g. -P ubuntu-latest=myimage:tag)

@@ -1,15 +1,16 @@
 {
-  "name": "localrunner",
+  "name": "localactions",
   "version": "0.1.0",
   "description": "Run GitHub Actions workflows locally",
   "module": "src/index.ts",
   "type": "module",
   "bin": {
-    "localrunner": "./src/cli.ts"
+    "localactions": "./bin/localactions.js"
   },
   "files": [
     "src/",
     "!src/**/*.test.ts",
+    "bin/",
     "run.sh"
   ],
   "keywords": [
@@ -23,7 +24,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CamdenClark/localrunner.git"
+    "url": "git+https://github.com/CamdenClark/localactions.git"
   },
   "engines": {
     "bun": ">=1.0.0"

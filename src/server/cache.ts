@@ -17,7 +17,7 @@ interface CacheEntry {
 let nextCacheId = Date.now();
 
 function getCacheDir(repo: string): string {
-  const dir = join(tmpdir(), "localrunner", "cache", repo);
+  const dir = join(tmpdir(), "localactions", "cache", repo);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

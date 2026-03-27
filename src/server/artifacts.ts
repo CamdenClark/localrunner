@@ -21,7 +21,7 @@ const pendingBlobs = new Map<string, string>();
 let nextArtifactId = 1;
 
 function getArtifactsDir(runId: string): string {
-  const dir = join(homedir(), ".localrunner", "runs", runId, "artifacts");
+  const dir = join(homedir(), ".localactions", "runs", runId, "artifacts");
   mkdirSync(dir, { recursive: true });
   return dir;
 }

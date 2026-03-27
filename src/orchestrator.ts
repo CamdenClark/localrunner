@@ -88,7 +88,7 @@ export async function launchRunner(opts: {
   const isDocker = !!dockerImage;
 
   // Write event.json to a temp directory for the runner
-  const tmpDir = join(tmpdir(), `localrunner-${Date.now()}`);
+  const tmpDir = join(tmpdir(), `localactions-${Date.now()}`);
   await Bun.write(join(tmpDir, "event.json"), JSON.stringify(eventPayload, null, 2));
 
   const jitconfig = buildJitConfig(port, hostAddress);
@@ -96,7 +96,7 @@ export async function launchRunner(opts: {
   // Create Docker network if running in Docker mode
   let networkName: string | undefined;
   if (isDocker) {
-    networkName = `localrunner-${Date.now()}`;
+    networkName = `localactions-${Date.now()}`;
     const netProc = Bun.spawnSync(["docker", "network", "create", networkName]);
     if (netProc.exitCode !== 0) {
       const stderr = netProc.stderr.toString();
@@ -223,7 +223,7 @@ export async function launchRunner(opts: {
   output.emit({ type: "info", message: isDocker ? `Starting runner in Docker (${dockerImage})...\n` : "Starting runner...\n" });
 
   if (isDocker) {
-    runnerContainerName = `localrunner-runner-${Date.now()}`;
+    runnerContainerName = `localactions-runner-${Date.now()}`;
     const dockerArgs = [
       "docker", "run", "--rm",
       "--name", runnerContainerName,

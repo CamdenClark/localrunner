@@ -140,7 +140,7 @@ export function registerResultsRoutes(app: Hono<ServerEnv>, ctx: RunContext) {
     const { join } = await import("path");
     const { homedir } = await import("os");
 
-    const filePath = join(homedir(), ".localrunner", "runs", runId, "artifacts", name);
+    const filePath = join(homedir(), ".localactions", "runs", runId, "artifacts", name);
 
     if (existsSync(filePath)) {
       const file = Bun.file(filePath);

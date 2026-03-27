@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Long-lived localrunner server.
+ * Long-lived localactions server.
  * Handles the runner protocol for active runs and serves the web UI.
  *
  * Usage:
@@ -42,11 +42,11 @@ const server = Bun.serve({
   websocket,
 });
 
-console.log(`localrunner server listening on http://localhost:${port}`);
+console.log(`localactions server listening on http://localhost:${port}`);
 console.log(`Web UI: http://localhost:${port}/`);
 console.log(`Press Ctrl+C to stop.\n`);
 
-const pidFile = `${process.env.HOME}/.localrunner/server.pid`;
+const pidFile = `${process.env.HOME}/.localactions/server.pid`;
 await Bun.write(pidFile, String(process.pid));
 
 process.on("SIGINT", () => {

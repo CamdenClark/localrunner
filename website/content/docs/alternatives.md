@@ -5,7 +5,7 @@ weight: 10
 
 # Alternatives
 
-localrunner isn't the only way to test your GitHub Actions workflows. Here are some other approaches and how they compare.
+localactions isn't the only way to test your GitHub Actions workflows. Here are some other approaches and how they compare.
 
 ## act
 
@@ -19,7 +19,7 @@ localrunner isn't the only way to test your GitHub Actions workflows. Here are s
 - Uses its own custom runtime instead of the official GitHub Actions runner, so behavior can diverge from what actually happens on GitHub
 - Some actions don't work or behave differently than on GitHub
 
-localrunner takes a different approach: it launches the **official GitHub Actions runner binary** against a mock server implementing GitHub's internal runner protocol. This means the execution behavior matches GitHub much more closely.
+localactions takes a different approach: it launches the **official GitHub Actions runner binary** against a mock server implementing GitHub's internal runner protocol. This means the execution behavior matches GitHub much more closely.
 
 ## Just pushing and seeing what happens
 
@@ -37,4 +37,4 @@ The most common approach — commit, push, wait for GitHub Actions to run, check
 - Requires network access
 - Hard to debug failures — you only get logs after the fact
 
-localrunner gives you a fast, local feedback loop so you can iterate on your workflows without pushing to GitHub every time.
+localactions gives you a fast, local feedback loop so you can iterate on your workflows without pushing to GitHub every time.

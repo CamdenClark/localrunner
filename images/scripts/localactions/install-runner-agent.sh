@@ -1,7 +1,7 @@
 #!/bin/bash -e
 ################################################################################
 ##  File:  install-runner-agent.sh
-##  Desc:  Install GitHub Actions runner agent (localrunner-specific)
+##  Desc:  Install GitHub Actions runner agent (localactions-specific)
 ################################################################################
 
 echo "=== Installing GitHub Actions runner agent ==="

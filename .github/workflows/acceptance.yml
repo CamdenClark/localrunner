@@ -19,8 +19,8 @@ jobs:
           bun-version: "1.3.11"
       - name: Install dependencies
         run: bun install
-      - name: Pull localrunner image
-        run: docker pull ghcr.io/camdenclark/localrunner:ubuntu24
+      - name: Pull localactions image
+        run: docker pull ghcr.io/camdenclark/localactions:ubuntu24
       - name: Run acceptance tests (shard ${{ matrix.shard }})
         run: bun test --config=bunfig.acceptance.toml
         env:

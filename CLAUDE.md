@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**localrunner** is a local GitHub Actions workflow executor. It parses workflow YAML files, spins up a mock GitHub Actions server implementing GitHub's internal runner protocol, and launches the official GitHub Actions runner (in Docker or locally) to execute workflows without pushing to GitHub.
+**localactions** is a local GitHub Actions workflow executor. It parses workflow YAML files, spins up a mock GitHub Actions server implementing GitHub's internal runner protocol, and launches the official GitHub Actions runner (in Docker or locally) to execute workflows without pushing to GitHub.
 
 ## Commands
 
@@ -41,7 +41,7 @@ A `Bun.serve()` HTTP server implementing the GitHub Actions runner protocol:
 - **`auth.ts`** — OAuth token and connection data endpoints
 - **`job.ts`** — Job acquire/renew/complete lifecycle
 - **`actions.ts`** — Resolves action references (owner/repo@ref) to commit SHAs via GitHub API
-- **`cache.ts`** — `actions/cache` API backed by local filesystem (`~/.localrunner/cache/`), 7-day TTL
+- **`cache.ts`** — `actions/cache` API backed by local filesystem (`~/.localactions/cache/`), 7-day TTL
 - **`logs.ts`** — Log upload, timeline updates, WebSocket live feed on `/feed`
 - **`results.ts`** — Results API (Twirp RPC protocol), blob uploads
 - **`steps.ts`** — Builds step definitions (script steps vs action steps)
@@ -65,6 +65,6 @@ Three modes: **pretty** (colored, human-friendly, default), **raw** (minimal mar
 There are two test profiles configured in `bunfig.toml`:
 
 - **`bun test`** — runs **unit tests** only (`*.test.ts` in project root). This is the default profile and what you should run after making code changes.
-- **`bun test --config=acceptance`** — runs **acceptance tests** (`acceptance/`). These clone real repos and run localrunner end-to-end. Only run these when specifically asked or when testing end-to-end behavior.
+- **`bun test --config=acceptance`** — runs **acceptance tests** (`acceptance/`). These clone real repos and run localactions end-to-end. Only run these when specifically asked or when testing end-to-end behavior.
 
 Unit tests live alongside source files in the project root. Acceptance tests live in `acceptance/` and support sharding via `SHARD_INDEX`/`SHARD_TOTAL` env vars.

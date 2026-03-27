@@ -1,13 +1,13 @@
 ---
 name: iterate-workflow
-description: Test localrunner against a new workflow type by creating a temp workflow, running it, debugging failures, and committing fixes to a PR. Use when testing support for a new GitHub Actions feature, workflow pattern, or action.
+description: Test localactions against a new workflow type by creating a temp workflow, running it, debugging failures, and committing fixes to a PR. Use when testing support for a new GitHub Actions feature, workflow pattern, or action.
 argument-hint: [workflow-description]
 allowed-tools: Read, Grep, Glob, Bash(bun *), Bash(git *), Bash(gh *), Bash(docker *), Bash(cat *), Bash(ls *), Bash(mkdir *), Edit, Write, Agent
 ---
 
 # Iterate on Workflow Support
 
-You are testing and fixing localrunner's support for a specific GitHub Actions workflow pattern. Follow this loop until the workflow runs successfully or you've identified the root cause and committed a fix.
+You are testing and fixing localactions's support for a specific GitHub Actions workflow pattern. Follow this loop until the workflow runs successfully or you've identified the root cause and committed a fix.
 
 The user will describe the workflow type or feature to test (e.g. "service containers", "reusable workflows", "composite actions", "artifact upload/download"). Use `$ARGUMENTS` as the description of what to test.
 
@@ -21,7 +21,7 @@ Create a `.github/workflows/_test.yml` file in this repository that exercises th
 
 Use real-world patterns from GitHub Actions documentation. The workflow should trigger on `push`.
 
-## Step 2: Run the workflow with localrunner
+## Step 2: Run the workflow with localactions
 
 Run the workflow using:
 
@@ -33,17 +33,17 @@ Use `--verbose` so you get full debug output for diagnosing issues.
 
 Read the output carefully. Identify whether the run:
 - **Succeeded** — the workflow completed without errors
-- **Failed in localrunner** — the mock server or runner setup hit an error (this is what we want to fix)
-- **Failed in the workflow itself** — the workflow steps failed due to workflow logic, not localrunner bugs
+- **Failed in localactions** — the mock server or runner setup hit an error (this is what we want to fix)
+- **Failed in the workflow itself** — the workflow steps failed due to workflow logic, not localactions bugs
 
 ## Step 3: Diagnose and fix
 
-If localrunner failed, investigate the root cause:
+If localactions failed, investigate the root cause:
 
 1. Read the verbose output to identify which server endpoint or step failed
 2. Search the relevant source files (`server/`, `expressions.ts`, `workflow.ts`, `orchestrator.ts`, etc.)
 3. Identify the gap — missing endpoint, incorrect response format, unsupported expression, etc.
-4. Implement the fix in the localrunner source code
+4. Implement the fix in the localactions source code
 5. Run the unit tests with `bun test` to make sure you haven't broken anything
 
 ## Step 4: Re-run and iterate
@@ -62,7 +62,7 @@ Once you've made fixes:
 
 1. **Delete the temp workflow**: `rm .github/workflows/_test.yml`
 2. **Run unit tests**: `bun test` to verify nothing is broken
-3. **Commit only the localrunner source changes** (not the test workflow) with a descriptive message about what workflow feature is now supported
+3. **Commit only the localactions source changes** (not the test workflow) with a descriptive message about what workflow feature is now supported
 4. **Push and create/update a PR** using `gh pr create` or `gh pr edit`
 
 ## Important notes

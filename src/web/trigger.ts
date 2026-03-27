@@ -12,9 +12,9 @@ import { launchRunner, type RunConfig } from "../orchestrator";
 import type { RunManager } from "../server/runs";
 
 const DEFAULT_IMAGES: Record<string, string> = {
-  "ubuntu-latest": "ghcr.io/camdenclark/localrunner:ubuntu24",
-  "ubuntu-24.04": "ghcr.io/camdenclark/localrunner:ubuntu24",
-  "ubuntu-22.04": "ghcr.io/camdenclark/localrunner:ubuntu22",
+  "ubuntu-latest": "ghcr.io/camdenclark/localactions:ubuntu24",
+  "ubuntu-24.04": "ghcr.io/camdenclark/localactions:ubuntu24",
+  "ubuntu-22.04": "ghcr.io/camdenclark/localactions:ubuntu22",
 };
 
 function resolveDockerImage(runsOn: string | string[] | undefined): string | undefined {

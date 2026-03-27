@@ -1,7 +1,7 @@
 #!/bin/bash -e
 ################################################################################
 ##  File:  configure-runner-user.sh
-##  Desc:  Create the runner user for GitHub Actions (localrunner-specific)
+##  Desc:  Create the runner user for GitHub Actions (localactions-specific)
 ################################################################################
 
 # Install sudo if not present
