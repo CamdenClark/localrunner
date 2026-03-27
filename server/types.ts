@@ -12,6 +12,13 @@ export interface StrategyContext {
   maxParallel?: number;
 }
 
+export interface NeedsContext {
+  [jobId: string]: {
+    result: string;
+    outputs: Record<string, string>;
+  };
+}
+
 export interface ServerConfig {
   port: number;
   repoCtx: RepoContext;
@@ -26,6 +33,7 @@ export interface ServerConfig {
   matrix?: Record<string, string>;
   strategy?: StrategyContext;
   inputs?: Record<string, string>;
+  needs?: NeedsContext;
   runnerOs?: string;
   runnerArch?: string;
   output?: OutputHandler;
@@ -35,6 +43,7 @@ export interface ServerHandle {
   server: ReturnType<typeof Bun.serve>;
   jobCompleted: Promise<string>;
   output: OutputHandler;
+  ctx: RunContext;
 }
 
 export interface RunContext {
@@ -50,6 +59,7 @@ export interface RunContext {
   matrix: Record<string, string>;
   strategy: StrategyContext;
   inputs: Record<string, string>;
+  needs: NeedsContext;
   hostAddress: string;
   serverBaseUrl: string;
   runnerOs: string;
@@ -65,6 +75,7 @@ export interface RunContext {
 
   jobDispatched: boolean;
   jobDone: boolean;
+  jobOutputs: Record<string, string>;
   resolveJobCompleted: (conclusion: string) => void;
 
   /** Cached per-run Hono app (set lazily by the multi-run server) */
@@ -98,6 +109,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     matrix: config.matrix || {},
     strategy: config.strategy || { failFast: true, jobIndex: 0, jobTotal: 1 },
     inputs: config.inputs || {},
+    needs: config.needs || {},
     hostAddress,
     serverBaseUrl,
     runnerOs: config.runnerOs || detectOs(),
@@ -113,6 +125,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
 
     jobDispatched: false,
     jobDone: false,
+    jobOutputs: {},
     resolveJobCompleted,
   };
 

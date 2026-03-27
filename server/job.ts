@@ -50,6 +50,19 @@ export function registerJobRoutes(app: Hono<ServerEnv>, ctx: RunContext) {
     ctx.jobDone = true;
     const body = (await c.req.json()) as any;
     const conclusion = body.conclusion || "unknown";
+
+    // Capture job outputs from the runner's completion message
+    if (body.outputVariables) {
+      for (const [key, val] of Object.entries(body.outputVariables)) {
+        ctx.jobOutputs[key] = typeof val === "object" && val !== null ? (val as any).value ?? String(val) : String(val);
+      }
+    }
+    if (body.outputs) {
+      for (const [key, val] of Object.entries(body.outputs)) {
+        ctx.jobOutputs[key] = typeof val === "object" && val !== null ? (val as any).value ?? String(val) : String(val);
+      }
+    }
+
     ctx.output.emit({ type: "server", tag: "job", message: `Job completed (${conclusion})` });
     ctx.output.emit({ type: "job_complete", conclusion });
 
@@ -150,6 +163,25 @@ function buildJobMessage(ctx: RunContext): object {
       inputs: {
         t: 2,
         d: Object.entries(ctx.inputs).map(([k, v]) => ({ k, v })),
+      },
+      needs: {
+        t: 2,
+        d: Object.entries(ctx.needs).map(([jobId, need]) => ({
+          k: jobId,
+          v: {
+            t: 2,
+            d: [
+              { k: "result", v: need.result },
+              {
+                k: "outputs",
+                v: {
+                  t: 2,
+                  d: Object.entries(need.outputs).map(([k, v]) => ({ k, v })),
+                },
+              },
+            ],
+          },
+        })),
       },
       job: { t: 2, d: [] },
       runner: {

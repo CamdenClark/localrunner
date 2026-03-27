@@ -22,5 +22,5 @@ export function createServer(config: ServerConfig): ServerHandle {
   output.emit({ type: "info", message: `Job: ${ctx.jobId}` });
   output.emit({ type: "info", message: "Waiting for runner to connect...\n" });
 
-  return { server, jobCompleted, output };
+  return { server, jobCompleted, output, ctx };
 }
