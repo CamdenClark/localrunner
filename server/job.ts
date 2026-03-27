@@ -225,6 +225,9 @@ function buildJobMessage(ctx: RunContext): object {
     mask: [
       ...Object.values(ctx.secrets).filter((v) => v.length > 0).map((v) => ({ type: "regex", value: v })),
     ],
+    // Note: job output definitions are not passed to the runner because the
+    // runner's template engine cannot evaluate them in our protocol format.
+    // Job outputs require future work to capture step outputs server-side.
     steps: ctx.jobSteps,
     workspace: { clean: null },
     fileTable: [],
