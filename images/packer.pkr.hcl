@@ -151,11 +151,12 @@ build {
       tags       = [var.image_os, "${var.image_os}-${local.timestamp}"]
     }
 
-    post-processor "docker-push" {
-      login          = var.docker_push
-      login_server   = var.docker_login_server
-      login_username = var.docker_login_username
-      login_password = var.docker_login_password
+    post-processor "shell-local" {
+      inline = var.docker_push ? [
+        "crane auth login ${var.docker_login_server} -u ${var.docker_login_username} -p ${var.docker_login_password}",
+        "docker save ${var.docker_repository}:${var.image_os} | crane push --chunk-size=200000000 - ${var.docker_repository}:${var.image_os}",
+        "docker save ${var.docker_repository}:${var.image_os}-${local.timestamp} | crane push --chunk-size=200000000 - ${var.docker_repository}:${var.image_os}-${local.timestamp}",
+      ] : ["echo 'Skipping push'"]
     }
   }
 }

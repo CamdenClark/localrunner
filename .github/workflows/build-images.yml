@@ -47,6 +47,11 @@ jobs:
         with:
           version: latest
 
+      - name: Install crane
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/google/go-containerregistry/releases/latest | jq -r .tag_name)
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | sudo tar -xzf - -C /usr/local/bin crane
+
       - name: Initialize Packer
         if: >-
           github.event_name != 'workflow_dispatch' ||
