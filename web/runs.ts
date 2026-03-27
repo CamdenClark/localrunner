@@ -78,8 +78,58 @@ export function runsTable(runs: Run[]) {
   `;
 }
 
-export function runsPage(runs: Run[]) {
+interface WorkflowInfo {
+  fileName: string;
+  name: string;
+  events: string[];
+  jobs: string[];
+}
+
+const eventLabels: Record<string, string> = {
+  push: "push",
+  pull_request: "pull request",
+  workflow_dispatch: "manual",
+  schedule: "schedule",
+  release: "release",
+};
+
+function quickRunCards(workflows: WorkflowInfo[]) {
+  if (workflows.length === 0) return html``;
+
+  const shown = workflows.slice(0, 8);
+
   return html`
+    <div class="quick-run">
+      <div class="quick-run-header">
+        <h2 class="quick-run-title">Quick Run</h2>
+        <a href="/workflows" class="quick-run-link">All workflows &rarr;</a>
+      </div>
+      <div class="quick-run-grid">
+        ${shown.map((wf) => html`
+          <div class="qr-card">
+            <div class="qr-card-name">${wf.name}</div>
+            <div class="qr-card-meta">${wf.fileName} &middot; ${wf.jobs.length} job${wf.jobs.length !== 1 ? "s" : ""}</div>
+            <div class="qr-card-triggers">
+              ${wf.events.map((event) => html`
+                <button
+                  class="qr-trigger"
+                  hx-post="/api/trigger"
+                  hx-vals='${JSON.stringify({ fileName: wf.fileName, event })}'
+                  hx-swap="none"
+                  onclick="this.classList.add('triggered'); this.textContent='Running…'; setTimeout(() => { this.classList.remove('triggered'); this.textContent='Run as ${eventLabels[event] || event}'; }, 2000)"
+                >Run as ${eventLabels[event] || event}</button>
+              `)}
+            </div>
+          </div>
+        `)}
+      </div>
+    </div>
+  `;
+}
+
+export function runsPage(runs: Run[], workflows: WorkflowInfo[] = []) {
+  return html`
+    ${quickRunCards(workflows)}
     <div
       hx-ext="sse"
       sse-connect="/sse/runs"

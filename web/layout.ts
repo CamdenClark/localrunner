@@ -85,6 +85,7 @@ export function layout(title: string, content: HtmlEscapedString) {
     }
     header .container { display: flex; align-items: center; gap: 1rem; }
     header h1 { font-size: 1.1rem; font-weight: 600; }
+    header nav { margin-left: auto; }
     header nav a { font-size: 0.9rem; color: #8b949e; }
     header nav a:hover { color: #c9d1d9; }
 
@@ -187,6 +188,48 @@ export function layout(title: string, content: HtmlEscapedString) {
     .trigger-btn:hover { background: #30363d; border-color: #484f58; }
     .trigger-btn.triggered { background: #238636; border-color: #238636; color: #fff; }
 
+    .quick-run { margin-bottom: 2rem; }
+    .quick-run-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .quick-run-title { font-size: 1rem; font-weight: 600; }
+    .quick-run-link { font-size: 0.85rem; color: #58a6ff; }
+    .quick-run-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem;
+    }
+    .qr-card {
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      background: #161b22;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .qr-card:hover { border-color: #30363d; }
+    .qr-card-name { font-weight: 600; font-size: 0.95rem; }
+    .qr-card-meta { font-size: 0.8rem; color: #8b949e; }
+    .qr-card-triggers { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; }
+    .qr-trigger {
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    .qr-trigger:hover { background: #2ea043; }
+    .qr-trigger.triggered { background: #1a7f37; opacity: 0.8; }
+
     .empty { text-align: center; padding: 3rem; color: #8b949e; }
 
     .refresh-indicator {
@@ -201,7 +244,7 @@ export function layout(title: string, content: HtmlEscapedString) {
     <div class="container">
       <h1><a href="/" style="color: inherit;">localrunner</a></h1>
       <nav>
-        <a href="/workflows">Workflows</a>
+        <a href="/workflows">All Workflows</a>
       </nav>
     </div>
   </header>
