@@ -26,6 +26,7 @@ export interface RunConfig {
   services?: Record<string, Service>;
   output?: OutputHandler;
   timeoutMinutes?: number;
+  jobOutputDefs?: Record<string, string>;
 }
 
 function buildJitConfig(port: number, hostAddress: string): string {
@@ -319,7 +320,7 @@ export async function launchRunner(opts: {
  * Creates a server, runs the job, stops the server when done.
  */
 export async function startRun(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, needs, dockerImage, services, output: configOutput } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, needs, dockerImage, services, output: configOutput, jobOutputDefs } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
@@ -342,6 +343,7 @@ export async function startRun(config: RunConfig): Promise<RunResult> {
     runnerOs: isDocker ? "Linux" : detectOs(),
     runnerArch: isDocker ? "X64" : detectArch(),
     output: configOutput,
+    jobOutputDefs,
   });
 
   const result = await launchRunner({
@@ -411,7 +413,7 @@ export async function startRunOnServer(opts: {
  * 4. Waits for job completion (signaled via SSE)
  */
 export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResult> {
-  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, needs, dockerImage, services, output: configOutput } = config;
+  const { port, repoCtx, jobSteps, eventName, eventPayload, workflowName, jobName, runnerDir, secrets, variables, matrix, strategy, inputs, needs, dockerImage, services, output: configOutput, jobOutputDefs } = config;
 
   const isDocker = !!dockerImage;
   const hostAddress = isDocker ? "host.docker.internal" : "localhost";
@@ -438,6 +440,7 @@ export async function startRunOnRemoteServer(config: RunConfig): Promise<RunResu
         hostAddress,
         runnerOs: isDocker ? "Linux" : detectOs(),
         runnerArch: isDocker ? "X64" : detectArch(),
+        jobOutputDefs,
       },
     }),
   });

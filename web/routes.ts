@@ -53,9 +53,17 @@ export function registerWebRoutes(app: Hono, runManager: RunManager, port: numbe
       let closed = false;
       stream.onAbort(() => { closed = true; });
 
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
       const unsubscribe = runManager.eventBus.subscribe(() => {
         if (closed) return;
-        stream.writeSSE({ event: "run_changed", data: "" }).catch(() => { closed = true; });
+        if (!debounceTimer) {
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            if (!closed) {
+              stream.writeSSE({ event: "run_changed", data: "" }).catch(() => { closed = true; });
+            }
+          }, 500);
+        }
       });
 
       const keepalive = setInterval(() => {
@@ -65,7 +73,7 @@ export function registerWebRoutes(app: Hono, runManager: RunManager, port: numbe
 
       await new Promise<void>((resolve) => {
         const check = setInterval(() => {
-          if (closed) { clearInterval(check); clearInterval(keepalive); unsubscribe(); resolve(); }
+          if (closed) { clearInterval(check); clearInterval(keepalive); unsubscribe(); if (debounceTimer) clearTimeout(debounceTimer); resolve(); }
         }, 1000);
       });
     });
@@ -108,11 +116,19 @@ export function registerWebRoutes(app: Hono, runManager: RunManager, port: numbe
       let closed = false;
       stream.onAbort(() => { closed = true; });
 
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
       const unsubscribe = ctx.output.subscribe((event) => {
         if (closed) return;
         if (event.type === "step_start" || event.type === "step_complete" ||
             event.type === "step_log" || event.type === "job_complete") {
-          stream.writeSSE({ event: "run_changed", data: "" }).catch(() => { closed = true; });
+          if (!debounceTimer) {
+            debounceTimer = setTimeout(() => {
+              debounceTimer = null;
+              if (!closed) {
+                stream.writeSSE({ event: "run_changed", data: "" }).catch(() => { closed = true; });
+              }
+            }, 500);
+          }
         }
       });
 
@@ -124,7 +140,7 @@ export function registerWebRoutes(app: Hono, runManager: RunManager, port: numbe
       await new Promise<void>((resolve) => {
         const check = setInterval(() => {
           if (closed || ctx.output.jobCompleted) {
-            clearInterval(check); clearInterval(keepalive); unsubscribe(); resolve();
+            clearInterval(check); clearInterval(keepalive); unsubscribe(); if (debounceTimer) clearTimeout(debounceTimer); resolve();
           }
         }, 1000);
       });
