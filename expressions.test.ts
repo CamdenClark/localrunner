@@ -336,10 +336,103 @@ describe("buildExpressionContext", () => {
     ).toBe(0);
   });
 
-  test("handles array values in event payload by stringifying", () => {
+  test("handles array values in event payload as JSON", () => {
     const payload = { labels: ["bug", "urgent"] };
     const ctx = buildExpressionContext(mockCtx, "push", payload, "wf", "job");
-    expect(ctx["github.event.labels"]).toBe("bug,urgent");
+    expect(ctx["github.event.labels"]).toBe('["bug","urgent"]');
+    expect(ctx["github.event.labels.0"]).toBe("bug");
+    expect(ctx["github.event.labels.1"]).toBe("urgent");
+  });
+
+  test("flattens array of objects with indexed paths", () => {
+    const payload = {
+      issue: {
+        labels: [
+          { id: 1, name: "bug", color: "d73a4a" },
+          { id: 2, name: "urgent", color: "ff0000" },
+        ],
+      },
+    };
+    const ctx = buildExpressionContext(mockCtx, "push", payload, "wf", "job");
+    expect(ctx["github.event.issue.labels.0.name"]).toBe("bug");
+    expect(ctx["github.event.issue.labels.0.color"]).toBe("d73a4a");
+    expect(ctx["github.event.issue.labels.1.name"]).toBe("urgent");
+    expect(ctx["github.event.issue.labels.1.id"]).toBe("2");
+  });
+
+  test("stores JSON for objects in event payload", () => {
+    const payload = { sender: { login: "testuser", id: 123 } };
+    const ctx = buildExpressionContext(mockCtx, "push", payload, "wf", "job");
+    expect(ctx["github.event.sender"]).toBe('{"login":"testuser","id":123}');
+    expect(ctx["github.event.sender.login"]).toBe("testuser");
+  });
+});
+
+// --- bracket notation, toJSON, and .* filter ---
+
+describe("evaluateExpressions advanced", () => {
+  test("resolves bracket notation [N]", () => {
+    const ctx: Record<string, string> = {
+      "github.event.issue.labels.0.name": "bug",
+      "github.event.issue.labels.1.name": "urgent",
+    };
+    expect(
+      evaluateExpressions(expr("github.event.issue.labels[0].name"), ctx),
+    ).toBe("bug");
+    expect(
+      evaluateExpressions(expr("github.event.issue.labels[1].name"), ctx),
+    ).toBe("urgent");
+  });
+
+  test("resolves toJSON() for objects", () => {
+    const ctx: Record<string, string> = {
+      "github.event.issue": '{"id":1,"title":"Test"}',
+    };
+    const result = evaluateExpressions(expr("toJSON(github.event.issue)"), ctx);
+    expect(JSON.parse(result)).toEqual({ id: 1, title: "Test" });
+  });
+
+  test("toJSON() pretty-prints output", () => {
+    const ctx: Record<string, string> = {
+      "github.event.issue": '{"id":1}',
+    };
+    const result = evaluateExpressions(expr("toJSON(github.event.issue)"), ctx);
+    expect(result).toBe('{\n  "id": 1\n}');
+  });
+
+  test("toJSON() returns empty for unknown path", () => {
+    expect(
+      evaluateExpressions(expr("toJSON(nonexistent)"), {}),
+    ).toBe("");
+  });
+
+  test("toJSON() wraps primitive values", () => {
+    const ctx: Record<string, string> = {
+      "github.event.action": "created",
+    };
+    const result = evaluateExpressions(expr("toJSON(github.event.action)"), ctx);
+    expect(result).toBe('"created"');
+  });
+
+  test("resolves .* filter on array of objects", () => {
+    const ctx: Record<string, string> = {
+      "github.event.issue.labels": '[{"name":"bug"},{"name":"urgent"}]',
+      "github.event.issue.labels.0.name": "bug",
+      "github.event.issue.labels.1.name": "urgent",
+    };
+    const result = evaluateExpressions(
+      expr("github.event.issue.labels.*.name"),
+      ctx,
+    );
+    expect(JSON.parse(result)).toEqual(["bug", "urgent"]);
+  });
+
+  test(".* filter returns empty array when no matches", () => {
+    const result = evaluateExpressions(
+      expr("github.event.issue.labels.*.name"),
+      {},
+    );
+    expect(JSON.parse(result)).toEqual([]);
   });
 });
 
@@ -415,5 +508,47 @@ describe("expression evaluation integration", () => {
     });
     const input = "deploy to " + expr("vars.DEPLOY_ENV");
     expect(evaluateExpressions(input, ctx)).toBe("deploy to production");
+  });
+
+  test("evaluates bracket notation on issue_comment payload", () => {
+    const payload = {
+      action: "created",
+      issue: {
+        labels: [
+          { id: 1, name: "bug", color: "d73a4a" },
+          { id: 2, name: "enhancement", color: "a2eeef" },
+        ],
+      },
+      comment: { id: 1, body: "Test comment" },
+    };
+    const ctx = buildExpressionContext(mockCtx, "issue_comment", payload, "wf", "job");
+    expect(evaluateExpressions(expr("github.event.issue.labels[0].name"), ctx)).toBe("bug");
+    expect(evaluateExpressions(expr("github.event.issue.labels[1].name"), ctx)).toBe("enhancement");
+  });
+
+  test("evaluates toJSON on nested event payload object", () => {
+    const payload = {
+      comment: { id: 1, body: "Test comment", user: { login: "testuser" } },
+    };
+    const ctx = buildExpressionContext(mockCtx, "issue_comment", payload, "wf", "job");
+    const result = evaluateExpressions(expr("toJSON(github.event.comment)"), ctx);
+    const parsed = JSON.parse(result);
+    expect(parsed.id).toBe(1);
+    expect(parsed.body).toBe("Test comment");
+    expect(parsed.user.login).toBe("testuser");
+  });
+
+  test("evaluates .* filter on issue labels", () => {
+    const payload = {
+      issue: {
+        labels: [
+          { name: "bug" },
+          { name: "urgent" },
+        ],
+      },
+    };
+    const ctx = buildExpressionContext(mockCtx, "issue_comment", payload, "wf", "job");
+    const result = evaluateExpressions(expr("github.event.issue.labels.*.name"), ctx);
+    expect(JSON.parse(result)).toEqual(["bug", "urgent"]);
   });
 });

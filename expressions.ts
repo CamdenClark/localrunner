@@ -103,12 +103,75 @@ function flattenObject(obj: any, prefix: string, out: Record<string, string>) {
   if (obj == null) return;
   for (const [key, value] of Object.entries(obj)) {
     const path = `${prefix}.${key}`;
-    if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (Array.isArray(value)) {
+      out[path] = JSON.stringify(value);
+      for (let i = 0; i < value.length; i++) {
+        const item = value[i];
+        const itemPath = `${path}.${i}`;
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+          out[itemPath] = JSON.stringify(item);
+          flattenObject(item, itemPath, out);
+        } else if (Array.isArray(item)) {
+          out[itemPath] = JSON.stringify(item);
+        } else {
+          out[itemPath] = String(item ?? "");
+        }
+      }
+    } else if (value && typeof value === "object") {
+      out[path] = JSON.stringify(value);
       flattenObject(value, path, out);
     } else {
       out[path] = String(value ?? "");
     }
   }
+}
+
+// Resolve a single expression against the context
+function resolveExpression(expr: string, ctx: Record<string, string>): string {
+  // Handle toJSON() function
+  const toJsonMatch = expr.match(/^toJSON\(\s*(.+?)\s*\)$/);
+  if (toJsonMatch) {
+    const path = toJsonMatch[1];
+    const jsonValue = ctx[path];
+    if (jsonValue !== undefined) {
+      // If it's already JSON (object/array), pretty-print it
+      try {
+        return JSON.stringify(JSON.parse(jsonValue), null, 2);
+      } catch {
+        // Primitive string value — wrap it in JSON
+        return JSON.stringify(jsonValue);
+      }
+    }
+    return "";
+  }
+
+  // Handle .* filter (e.g., github.event.issue.labels.*.name)
+  if (expr.includes(".*")) {
+    const starIdx = expr.indexOf(".*.");
+    if (starIdx !== -1) {
+      const arrayPath = expr.slice(0, starIdx);
+      const prop = expr.slice(starIdx + 3);
+      const values: string[] = [];
+      const pattern = new RegExp(
+        `^${arrayPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(\\d+)\\.${prop.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+      );
+      for (const key of Object.keys(ctx)) {
+        if (pattern.test(key)) {
+          values.push(ctx[key]);
+        }
+      }
+      return JSON.stringify(values);
+    }
+  }
+
+  // Normalize bracket notation: labels[0].name → labels.0.name
+  const normalized = expr.replace(/\[(\d+)\]/g, ".$1");
+
+  const value = ctx[normalized];
+  if (value !== undefined) return value;
+
+  // Return empty string for unknown expressions (matches GitHub behavior)
+  return "";
 }
 
 // Evaluate ${{ expr }} in a string, replacing with values from the context
@@ -117,9 +180,6 @@ export function evaluateExpressions(
   ctx: Record<string, string>,
 ): string {
   return input.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (_match, expr: string) => {
-    const value = ctx[expr.trim()];
-    if (value !== undefined) return value;
-    // Return empty string for unknown expressions (matches GitHub behavior)
-    return "";
+    return resolveExpression(expr.trim(), ctx);
   });
 }
