@@ -93,7 +93,11 @@ export async function launchRunner(opts: {
     networkName = `localrunner-${Date.now()}`;
     const netProc = Bun.spawnSync(["docker", "network", "create", networkName]);
     if (netProc.exitCode !== 0) {
-      output.emit({ type: "info", message: `Failed to create Docker network: ${netProc.stderr.toString()}` });
+      const stderr = netProc.stderr.toString();
+      output.emit({ type: "info", message: `Failed to create Docker network: ${stderr}` });
+      if (stderr.includes("could not find an available") || stderr.includes("Pool overlaps") || stderr.includes("no available")) {
+        output.emit({ type: "info", message: `\nThis usually means too many Docker networks exist. Run:\n  docker network prune\nto clean up unused networks, then try again.` });
+      }
       stopServer?.();
       process.exit(1);
     }
