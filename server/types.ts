@@ -37,6 +37,7 @@ export interface ServerConfig {
   runnerOs?: string;
   runnerArch?: string;
   output?: OutputHandler;
+  jobOutputDefs?: Record<string, string>;
 }
 
 export interface ServerHandle {
@@ -65,6 +66,7 @@ export interface RunContext {
   runnerOs: string;
   runnerArch: string;
   output: OutputHandler;
+  jobOutputDefs: Record<string, string>;
 
   runId: string;
   sessionId: string;
@@ -115,6 +117,7 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     runnerOs: config.runnerOs || detectOs(),
     runnerArch: config.runnerArch || detectArch(),
     output,
+    jobOutputDefs: config.jobOutputDefs || {},
 
     runId: runId,
     sessionId: randomUUID(),

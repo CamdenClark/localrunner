@@ -85,6 +85,27 @@ export function registerJobRoutes(app: Hono<ServerEnv>, ctx: RunContext) {
   });
 }
 
+/**
+ * Build a TemplateToken mapping for job output definitions.
+ * Uses the runner's TemplateToken compact wire format:
+ * - type 0 = string literal
+ * - type 2 = mapping (sequence of key-value pairs)
+ * - type 3 = basic expression
+ */
+function buildJobOutputsToken(outputDefs: Record<string, string>): object {
+  return {
+    type: 2,
+    map: Object.entries(outputDefs).map(([name, value]) => {
+      // Strip ${{ }} wrapper to get bare expression
+      const exprMatch = value.match(/^\$\{\{\s*(.+?)\s*\}\}$/);
+      return {
+        Key: name,  // bare string → StringToken
+        Value: exprMatch ? { type: 3, expr: exprMatch[1] } : value,
+      };
+    }),
+  };
+}
+
 function buildJobMessage(ctx: RunContext): object {
   // Compute the runner workspace path
   // Docker runners use host.docker.internal and run from /home/runner
@@ -225,9 +246,7 @@ function buildJobMessage(ctx: RunContext): object {
     mask: [
       ...Object.values(ctx.secrets).filter((v) => v.length > 0).map((v) => ({ type: "regex", value: v })),
     ],
-    // Note: job output definitions are not passed to the runner because the
-    // runner's template engine cannot evaluate them in our protocol format.
-    // Job outputs require future work to capture step outputs server-side.
+    jobOutputs: Object.keys(ctx.jobOutputDefs).length > 0 ? buildJobOutputsToken(ctx.jobOutputDefs) : undefined,
     steps: ctx.jobSteps,
     workspace: { clean: null },
     fileTable: [],
