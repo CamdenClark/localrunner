@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: bun install
       - name: Pull localactions image
-        run: docker pull ghcr.io/camdenclark/localactions:ubuntu24
+        run: docker pull localactions-registry.camdenclark.workers.dev/localactions:ubuntu24
       - name: Run acceptance tests (shard ${{ matrix.shard }})
         run: bun test --config=bunfig.acceptance.toml
         env:

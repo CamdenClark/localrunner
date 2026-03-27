@@ -361,9 +361,9 @@ async function main() {
   const runnerDir = resolve(import.meta.dir, "runner");
 
   const DEFAULT_IMAGES: Record<string, string> = {
-    "ubuntu-latest": "ghcr.io/camdenclark/localactions:ubuntu24",
-    "ubuntu-24.04": "ghcr.io/camdenclark/localactions:ubuntu24",
-    "ubuntu-22.04": "ghcr.io/camdenclark/localactions:ubuntu22",
+    "ubuntu-latest": "localactions-registry.camdenclark.workers.dev/localactions:ubuntu24",
+    "ubuntu-24.04": "localactions-registry.camdenclark.workers.dev/localactions:ubuntu24",
+    "ubuntu-22.04": "localactions-registry.camdenclark.workers.dev/localactions:ubuntu22",
   };
 
   // Parse --platform overrides (e.g. -P ubuntu-latest=myimage:tag)

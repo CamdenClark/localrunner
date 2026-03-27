@@ -21,7 +21,7 @@ permissions:
   packages: write
 
 env:
-  REGISTRY: ghcr.io
+  REGISTRY: localactions-registry.camdenclark.workers.dev
 
 jobs:
   build:
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set image name
-        run: echo "IMAGE_NAME=$(echo '${{ github.repository_owner }}/localactions' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+        run: echo "IMAGE_NAME=localactions" >> "$GITHUB_ENV"
 
       - name: Setup Packer
         uses: hashicorp/setup-packer@main
@@ -67,6 +67,6 @@ jobs:
             -var "docker_repository=${REGISTRY}/${IMAGE_NAME}" \
             -var "docker_push=true" \
             -var "docker_login_server=${REGISTRY}" \
-            -var "docker_login_username=${{ github.actor }}" \
-            -var "docker_login_password=${{ secrets.GITHUB_TOKEN }}" \
+            -var "docker_login_username=${{ secrets.REGISTRY_USERNAME }}" \
+            -var "docker_login_password=${{ secrets.REGISTRY_PASSWORD }}" \
             .
