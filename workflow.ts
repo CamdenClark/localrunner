@@ -56,7 +56,7 @@ const JobSchema = z.object({
   "runs-on": z.union([z.string(), z.array(z.string())]).optional(),
   steps: z.array(StepSchema).optional(),
   env: EnvSchema.optional(),
-  if: z.string().optional(),
+  if: z.union([z.string(), z.boolean()]).transform(v => v === undefined ? undefined : String(v)).optional(),
   needs: z.union([z.string(), z.array(z.string())]).optional(),
   strategy: StrategySchema,
   services: z.record(ServiceSchema).optional(),
@@ -66,6 +66,7 @@ const JobSchema = z.object({
   outputs: z.record(z.string()).optional(),
   permissions: z.any().optional(),
   concurrency: z.any().optional(),
+  defaults: z.any().optional(),
   uses: z.string().optional(),
   with: z.record(z.any()).optional(),
   secrets: z.any().optional(),
@@ -141,14 +142,18 @@ export function matchesEvent(workflow: Workflow, eventName: string): boolean {
 
 export function workflowStepsToRunnerSteps(
   steps: Step[],
-  scriptStep: (script: string, displayName?: string, opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string> }) => object,
-  actionStep: (action: string, ref: string, displayName?: string, inputs?: Record<string, string>, opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string> }) => object,
+  scriptStep: (script: string, displayName?: string, opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string>; stepId?: string; shell?: string; workingDirectory?: string; timeoutMinutes?: number }) => object,
+  actionStep: (action: string, ref: string, displayName?: string, inputs?: Record<string, string>, opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string>; stepId?: string; shell?: string; workingDirectory?: string; timeoutMinutes?: number }) => object,
 ): object[] {
   return steps.map((step) => {
     const opts = {
       condition: step.if,
       continueOnError: step["continue-on-error"] === true || step["continue-on-error"] === "true",
       environment: step.env,
+      stepId: step.id,
+      shell: step.shell,
+      workingDirectory: step["working-directory"],
+      timeoutMinutes: step["timeout-minutes"] != null ? Number(step["timeout-minutes"]) : undefined,
     };
 
     if (step.uses) {

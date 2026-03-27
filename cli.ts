@@ -472,6 +472,16 @@ async function main() {
       }
     }
 
+    // Extract defaults.run from workflow level
+    const workflowDefaults = workflow.defaults as { run?: { shell?: string; "working-directory"?: string } } | undefined;
+    const defaultShell = workflowDefaults?.run?.shell;
+    const defaultWorkingDirectory = workflowDefaults?.run?.["working-directory"];
+
+    // Extract job-level defaults.run (overrides workflow-level)
+    const jobDefaults = selectedJob.defaults as { run?: { shell?: string; "working-directory"?: string } } | undefined;
+    const jobDefaultShell = jobDefaults?.run?.shell ?? defaultShell;
+    const jobDefaultWorkingDirectory = jobDefaults?.run?.["working-directory"] ?? defaultWorkingDirectory;
+
     const eventPayload = await generateEventPayload(eventName, repoCtx, payloadOverrides, inputDefaults);
 
     if (hasMatrix) {
@@ -492,13 +502,40 @@ async function main() {
       const runnerArch = isDocker ? "X64" : detectArch();
       const exprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName, undefined, secrets, variables, hasMatrix ? matrixCombo : undefined, { os: runnerOs, arch: runnerArch });
 
-      const evaluateOpts = (opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string> }) => {
+      // Evaluate job-level `if` condition
+      if (selectedJob.if) {
+        const conditionResult = evaluateExpressions(`\${{ ${selectedJob.if} }}`, exprCtx);
+        if (conditionResult === "false" || conditionResult === "" || conditionResult === "0") {
+          console.log(`  Skipping job '${selectedJobName}': condition '${selectedJob.if}' evaluated to false`);
+          continue;
+        }
+      }
+
+      // Merge job-level env into step environments
+      const jobEnv = selectedJob.env
+        ? Object.fromEntries(Object.entries(selectedJob.env).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
+        : undefined;
+      // Also merge workflow-level env
+      const workflowEnv = workflow.env
+        ? Object.fromEntries(Object.entries(workflow.env).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
+        : undefined;
+
+      const evaluateOpts = (opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string>; stepId?: string; shell?: string; workingDirectory?: string; timeoutMinutes?: number }) => {
         if (!opts) return opts;
+        // Merge workflow env → job env → step env (step takes precedence)
+        const mergedEnv = {
+          ...workflowEnv,
+          ...jobEnv,
+          ...(opts.environment
+            ? Object.fromEntries(Object.entries(opts.environment).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
+            : {}),
+        };
         return {
           ...opts,
-          environment: opts.environment
-            ? Object.fromEntries(Object.entries(opts.environment).map(([k, v]) => [k, evaluateExpressions(v, exprCtx)]))
-            : undefined,
+          environment: Object.keys(mergedEnv).length > 0 ? mergedEnv : undefined,
+          // Apply defaults.run for shell and working-directory if not set on step
+          shell: opts.shell ?? jobDefaultShell,
+          workingDirectory: opts.workingDirectory ?? jobDefaultWorkingDirectory,
         };
       };
       const jobSteps = workflowStepsToRunnerSteps(
@@ -521,6 +558,17 @@ async function main() {
 
       let result: { conclusion: string };
 
+      // Build strategy context
+      const strategyCtx = hasMatrix ? {
+        failFast: selectedJob.strategy?.["fail-fast"] !== false,
+        jobIndex: combosToRun.indexOf(matrixCombo),
+        jobTotal: combosToRun.length,
+        maxParallel: selectedJob.strategy?.["max-parallel"],
+      } : undefined;
+
+      // Build inputs context for workflow_dispatch / workflow_call
+      const inputsCtx = inputDefaults || undefined;
+
       if (serverRunning) {
         result = await startRunOnRemoteServer({
           port,
@@ -534,6 +582,8 @@ async function main() {
           secrets,
           variables,
           matrix: hasMatrix ? matrixCombo : undefined,
+          strategy: strategyCtx,
+          inputs: inputsCtx,
           dockerImage,
           services: selectedJob.services,
           output,
@@ -551,6 +601,8 @@ async function main() {
           secrets,
           variables,
           matrix: hasMatrix ? matrixCombo : undefined,
+          strategy: strategyCtx,
+          inputs: inputsCtx,
           dockerImage,
           services: selectedJob.services,
           output,

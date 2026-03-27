@@ -5,6 +5,13 @@ import { getDb } from "../db";
 import { runs, jobs } from "../db/schema";
 import { detectOs, detectArch } from "../platform";
 
+export interface StrategyContext {
+  failFast: boolean;
+  jobIndex: number;
+  jobTotal: number;
+  maxParallel?: number;
+}
+
 export interface ServerConfig {
   port: number;
   repoCtx: RepoContext;
@@ -17,6 +24,8 @@ export interface ServerConfig {
   variables?: Record<string, string>;
   hostAddress?: string;
   matrix?: Record<string, string>;
+  strategy?: StrategyContext;
+  inputs?: Record<string, string>;
   runnerOs?: string;
   runnerArch?: string;
   output?: OutputHandler;
@@ -39,6 +48,8 @@ export interface RunContext {
   secrets: Record<string, string>;
   variables: Record<string, string>;
   matrix: Record<string, string>;
+  strategy: StrategyContext;
+  inputs: Record<string, string>;
   hostAddress: string;
   serverBaseUrl: string;
   runnerOs: string;
@@ -85,6 +96,8 @@ export function createRunContext(config: ServerConfig): { ctx: RunContext; jobCo
     secrets: config.secrets || {},
     variables: config.variables || {},
     matrix: config.matrix || {},
+    strategy: config.strategy || { failFast: true, jobIndex: 0, jobTotal: 1 },
+    inputs: config.inputs || {},
     hostAddress,
     serverBaseUrl,
     runnerOs: config.runnerOs || detectOs(),
