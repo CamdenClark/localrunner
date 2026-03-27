@@ -619,6 +619,7 @@ async function main() {
             dockerImage,
             services: selectedJob.services,
             output,
+            timeoutMinutes: selectedJob["timeout-minutes"] != null ? Number(selectedJob["timeout-minutes"]) : undefined,
           });
         } else {
           result = await startRun({
@@ -639,6 +640,7 @@ async function main() {
             dockerImage,
             services: selectedJob.services,
             output,
+            timeoutMinutes: selectedJob["timeout-minutes"] != null ? Number(selectedJob["timeout-minutes"]) : undefined,
           });
         }
 
