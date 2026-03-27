@@ -15,6 +15,14 @@ import { expandMatrix, filterMatrix, formatMatrixCombo } from "./matrix";
 import { detectOs, detectArch } from "./platform";
 import type { NeedsContext } from "./server/types";
 import { topologicalSortJobs, normalizeNeeds, conclusionToResult } from "./needs";
+import {
+  resolveReusableWorkflow,
+  extractWorkflowCallConfig,
+  mapCallerInputs,
+  mapCallerSecrets,
+  extractReusableOutputs,
+  aggregateConclusion,
+} from "./reusable";
 import { parseInputArgs, validateInputs, type InputDefinition } from "./inputs";
 
 const { values, positionals } = parseArgs({
@@ -422,13 +430,13 @@ async function main() {
         console.error(`Error: ${(err as Error).message}`);
         continue;
       }
-      // Filter to jobs with steps
+      // Filter to jobs with steps or reusable workflow references
       jobsToRun = jobsToRun.filter((n) => {
         const j = workflow.jobs[n];
-        return j && j.steps && j.steps.length > 0;
+        return j && ((j.steps && j.steps.length > 0) || j.uses);
       });
       if (jobsToRun.length === 0) {
-        console.error(`Error: no jobs with steps found in ${basename(workflowPath)}. Available jobs: ${allJobNames.join(", ")}`);
+        console.error(`Error: no runnable jobs found in ${basename(workflowPath)}. Available jobs: ${allJobNames.join(", ")}`);
         continue;
       }
     }
@@ -474,11 +482,6 @@ async function main() {
       const selectedJob = workflow.jobs[selectedJobName]!;
       const dockerImage = resolveDockerImage(selectedJob["runs-on"]);
 
-      if (!selectedJob.steps || selectedJob.steps.length === 0) {
-        console.error(`Error: job '${selectedJobName}' has no steps`);
-        continue;
-      }
-
       // Check that all dependencies succeeded (unless job has explicit if condition)
       const deps = normalizeNeeds(selectedJob.needs);
       if (deps.length > 0 && !selectedJob.if) {
@@ -496,6 +499,241 @@ async function main() {
         if (needsCtx[dep]) {
           jobNeeds[dep] = needsCtx[dep];
         }
+      }
+
+      // Handle reusable workflow calls (jobs with `uses` instead of `steps`)
+      if (selectedJob.uses) {
+        console.log(`Job: ${selectedJobName} (reusable workflow: ${selectedJob.uses})`);
+
+        // Resolve the reusable workflow (relative to repo root / cwd)
+        const resolved = await resolveReusableWorkflow(selectedJob.uses, process.cwd());
+        const callConfig = extractWorkflowCallConfig(resolved.workflow);
+
+        // Build expression context for evaluating caller's with values
+        const isDocker = !!dockerImage;
+        const runnerOs = isDocker ? "Linux" : detectOs();
+        const runnerArch = isDocker ? "X64" : detectArch();
+        const callerExprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, workflowName, selectedJobName, undefined, secrets, variables, undefined, { os: runnerOs, arch: runnerArch }, jobNeeds);
+
+        // Evaluate job-level `if` condition
+        if (selectedJob.if) {
+          const conditionResult = evaluateExpressions(`\${{ ${selectedJob.if} }}`, callerExprCtx);
+          if (conditionResult === "false" || conditionResult === "" || conditionResult === "0") {
+            console.log(`  Skipping job '${selectedJobName}': condition '${selectedJob.if}' evaluated to false`);
+            needsCtx[selectedJobName] = { result: "skipped", outputs: {} };
+            continue;
+          }
+        }
+
+        // Map inputs and secrets from caller to called workflow
+        const calledInputs = mapCallerInputs(selectedJob.with, callConfig, callerExprCtx);
+        const calledSecrets = mapCallerSecrets(selectedJob.secrets, secrets, callConfig);
+
+        // Execute the called workflow's jobs
+        const calledWorkflowName = resolved.workflow.name || basename(resolved.path, ".yml");
+        const calledJobs = topologicalSortJobs(resolved.workflow.jobs).filter((n) => {
+          const j = resolved.workflow.jobs[n];
+          return j && j.steps && j.steps.length > 0;
+        });
+
+        if (calledJobs.length === 0) {
+          console.error(`  Error: reusable workflow has no runnable jobs`);
+          needsCtx[selectedJobName] = { result: "failure", outputs: {} };
+          anyFailed = true;
+          continue;
+        }
+
+        console.log(`  Called workflow jobs: ${calledJobs.join(" → ")}\n`);
+
+        // Extract defaults.run from called workflow level
+        const calledWorkflowDefaults = resolved.workflow.defaults as { run?: { shell?: string; "working-directory"?: string } } | undefined;
+        const calledDefaultShell = calledWorkflowDefaults?.run?.shell;
+        const calledDefaultWorkingDirectory = calledWorkflowDefaults?.run?.["working-directory"];
+
+        const calledNeedsCtx: NeedsContext = {};
+
+        for (const calledJobName of calledJobs) {
+          const calledJob = resolved.workflow.jobs[calledJobName]!;
+          const calledDockerImage = resolveDockerImage(calledJob["runs-on"]);
+
+          // Check dependencies within the called workflow
+          const calledDeps = normalizeNeeds(calledJob.needs);
+          if (calledDeps.length > 0 && !calledJob.if) {
+            const failedDep = calledDeps.find((d) => calledNeedsCtx[d]?.result !== "success");
+            if (failedDep) {
+              console.log(`  Skipping called job '${calledJobName}': dependency '${failedDep}' did not succeed`);
+              calledNeedsCtx[calledJobName] = { result: "skipped", outputs: {} };
+              continue;
+            }
+          }
+
+          const calledJobNeeds: NeedsContext = {};
+          for (const dep of calledDeps) {
+            if (calledNeedsCtx[dep]) {
+              calledJobNeeds[dep] = calledNeedsCtx[dep];
+            }
+          }
+
+          // Build expression context for called workflow job
+          const calledIsDocker = !!calledDockerImage;
+          const calledRunnerOs = calledIsDocker ? "Linux" : detectOs();
+          const calledRunnerArch = calledIsDocker ? "X64" : detectArch();
+
+          // Expand matrix for called job
+          const calledMatrixConfig = calledJob.strategy?.matrix;
+          const calledMatrixCombinations = expandMatrix(calledMatrixConfig);
+          const calledHasMatrix = calledMatrixCombinations.length > 0;
+          const calledCombosToRun = calledHasMatrix ? calledMatrixCombinations : [{}];
+
+          // Extract called job-level defaults
+          const calledJobDefaults = calledJob.defaults as { run?: { shell?: string; "working-directory"?: string } } | undefined;
+          const calledJobDefaultShell = calledJobDefaults?.run?.shell ?? calledDefaultShell;
+          const calledJobDefaultWorkingDirectory = calledJobDefaults?.run?.["working-directory"] ?? calledDefaultWorkingDirectory;
+
+          console.log(`  Job: ${calledJobName}${calledDockerImage ? ` (${calledJob["runs-on"] || "ubuntu-latest"} → ${calledDockerImage})` : " (local)"}`);
+
+          let calledJobConclusion = "succeeded";
+          let calledJobOutputs: Record<string, string> = {};
+
+          for (const matrixCombo of calledCombosToRun) {
+            const calledExprCtx = buildExpressionContext(repoCtx, eventName, eventPayload, calledWorkflowName, calledJobName, undefined, calledSecrets, variables, calledHasMatrix ? matrixCombo : undefined, { os: calledRunnerOs, arch: calledRunnerArch }, calledJobNeeds);
+
+            // Add inputs to expression context
+            for (const [k, v] of Object.entries(calledInputs)) {
+              calledExprCtx[`inputs.${k}`] = v;
+            }
+
+            // Evaluate called job-level `if` condition
+            if (calledJob.if) {
+              const conditionResult = evaluateExpressions(`\${{ ${calledJob.if} }}`, calledExprCtx);
+              if (conditionResult === "false" || conditionResult === "" || conditionResult === "0") {
+                console.log(`    Skipping called job '${calledJobName}': condition evaluated to false`);
+                calledJobConclusion = "skipped";
+                continue;
+              }
+            }
+
+            // Merge env
+            const calledJobEnv = calledJob.env
+              ? Object.fromEntries(Object.entries(calledJob.env).map(([k, v]) => [k, evaluateExpressions(v, calledExprCtx)]))
+              : undefined;
+            const calledWorkflowEnv = resolved.workflow.env
+              ? Object.fromEntries(Object.entries(resolved.workflow.env).map(([k, v]) => [k, evaluateExpressions(v, calledExprCtx)]))
+              : undefined;
+
+            const calledEvaluateOpts = (opts?: { condition?: string; continueOnError?: boolean; environment?: Record<string, string>; stepId?: string; shell?: string; workingDirectory?: string; timeoutMinutes?: number }) => {
+              if (!opts) return opts;
+              const mergedEnv = {
+                ...calledWorkflowEnv,
+                ...calledJobEnv,
+                ...(opts.environment
+                  ? Object.fromEntries(Object.entries(opts.environment).map(([k, v]) => [k, evaluateExpressions(v, calledExprCtx)]))
+                  : {}),
+              };
+              return {
+                ...opts,
+                environment: Object.keys(mergedEnv).length > 0 ? mergedEnv : undefined,
+                shell: opts.shell ?? calledJobDefaultShell,
+                workingDirectory: opts.workingDirectory ?? calledJobDefaultWorkingDirectory,
+              };
+            };
+
+            const calledJobSteps = workflowStepsToRunnerSteps(
+              calledJob.steps!,
+              (script, displayName, opts) => scriptStep(evaluateExpressions(script, calledExprCtx), displayName, calledEvaluateOpts(opts)),
+              (action, ref, displayName, inputs, opts) => {
+                const evaluated = inputs
+                  ? Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, evaluateExpressions(v, calledExprCtx)]))
+                  : undefined;
+                return actionStep(action, ref, displayName, evaluated, calledEvaluateOpts(opts));
+              },
+            );
+
+            console.log(`    Steps: ${calledJobSteps.length}\n`);
+
+            const calledJobDisplayName = `${selectedJobName}/${calledJobName}`;
+
+            const calledStrategyCtx = calledHasMatrix ? {
+              failFast: calledJob.strategy?.["fail-fast"] !== false,
+              jobIndex: calledCombosToRun.indexOf(matrixCombo),
+              jobTotal: calledCombosToRun.length,
+              maxParallel: calledJob.strategy?.["max-parallel"],
+            } : undefined;
+
+            let result: { conclusion: string; outputs: Record<string, string> };
+
+            if (serverRunning) {
+              result = await startRunOnRemoteServer({
+                port,
+                repoCtx,
+                jobSteps: calledJobSteps,
+                eventName,
+                eventPayload,
+                workflowName: calledWorkflowName,
+                jobName: calledJobDisplayName,
+                runnerDir,
+                secrets: calledSecrets,
+                variables,
+                matrix: calledHasMatrix ? matrixCombo : undefined,
+                strategy: calledStrategyCtx,
+                inputs: calledInputs,
+                needs: calledJobNeeds,
+                dockerImage: calledDockerImage,
+                services: calledJob.services,
+                output,
+                jobOutputDefs: calledJob.outputs,
+              });
+            } else {
+              result = await startRun({
+                port,
+                repoCtx,
+                jobSteps: calledJobSteps,
+                eventName,
+                eventPayload,
+                workflowName: calledWorkflowName,
+                jobName: calledJobDisplayName,
+                runnerDir,
+                secrets: calledSecrets,
+                variables,
+                matrix: calledHasMatrix ? matrixCombo : undefined,
+                strategy: calledStrategyCtx,
+                inputs: calledInputs,
+                needs: calledJobNeeds,
+                dockerImage: calledDockerImage,
+                services: calledJob.services,
+                output,
+                jobOutputDefs: calledJob.outputs,
+              });
+            }
+
+            calledJobConclusion = result.conclusion;
+            calledJobOutputs = { ...calledJobOutputs, ...result.outputs };
+          }
+
+          calledNeedsCtx[calledJobName] = {
+            result: conclusionToResult(calledJobConclusion),
+            outputs: calledJobOutputs,
+          };
+        }
+
+        // Aggregate results and extract outputs
+        const overallConclusion = aggregateConclusion(calledNeedsCtx);
+        const reusableOutputs = extractReusableOutputs(callConfig, calledNeedsCtx);
+
+        needsCtx[selectedJobName] = {
+          result: conclusionToResult(overallConclusion),
+          outputs: reusableOutputs,
+        };
+
+        if (overallConclusion !== "succeeded") {
+          anyFailed = true;
+        }
+        continue;
+      }
+
+      if (!selectedJob.steps || selectedJob.steps.length === 0) {
+        console.error(`Error: job '${selectedJobName}' has no steps`);
+        continue;
       }
 
       // Expand matrix combinations
@@ -622,6 +860,7 @@ async function main() {
             dockerImage,
             services: selectedJob.services,
             output,
+            jobOutputDefs: selectedJob.outputs,
           });
         } else {
           result = await startRun({
@@ -642,6 +881,7 @@ async function main() {
             dockerImage,
             services: selectedJob.services,
             output,
+            jobOutputDefs: selectedJob.outputs,
           });
         }
 
