@@ -151,6 +151,12 @@ export function layout(title: string, content: HtmlEscapedString) {
       line-height: 1.4;
     }
     .log-line { color: #c9d1d9; }
+    .log-warning { color: #d29922; }
+    .log-error { color: #f85149; font-weight: 600; }
+    .log-notice { color: #58a6ff; }
+    .log-debug { color: #484f58; }
+    .log-group { color: #c9d1d9; font-weight: 600; }
+    .log-command { color: #484f58; }
 
     .workflow-list { display: flex; flex-direction: column; gap: 0.75rem; }
     .workflow-card {
