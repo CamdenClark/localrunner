@@ -44,14 +44,8 @@ jobs:
       - name: Set image name
         run: echo "IMAGE_NAME=localactions" >> "$GITHUB_ENV"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Clone and install push tool
-        run: |
-          git clone https://github.com/CamdenClark/localactions-registry.git /tmp/localactions-registry
-          cd /tmp/localactions-registry/push
-          bun install
+      - name: Log in to registry
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${REGISTRY} -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
 
       - name: Set timestamp
         if: >-
@@ -81,5 +75,5 @@ jobs:
           github.event.inputs.ubuntu_version == '' ||
           github.event.inputs.ubuntu_version == matrix.version
         run: |
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | USERNAME_REGISTRY=${{ secrets.REGISTRY_USERNAME }} bun run /tmp/localactions-registry/push/index.ts ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }}
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | USERNAME_REGISTRY=${{ secrets.REGISTRY_USERNAME }} bun run /tmp/localactions-registry/push/index.ts ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }}-${TIMESTAMP}
+          docker push ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }}
+          docker push ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }}-${TIMESTAMP}
