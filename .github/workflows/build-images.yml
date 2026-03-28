@@ -30,39 +30,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - varfile: ubuntu2404.pkrvars.hcl
+          - base_image: "ubuntu:24.04"
             os: ubuntu24
             version: "2404"
-          - varfile: ubuntu2204.pkrvars.hcl
+            toolset: toolsets/toolset-2404.json
+          - base_image: "ubuntu:22.04"
             os: ubuntu22
             version: "2204"
+            toolset: toolsets/toolset-2204.json
     steps:
       - uses: actions/checkout@v4
 
       - name: Set image name
         run: echo "IMAGE_NAME=localactions" >> "$GITHUB_ENV"
 
-      - name: Setup Packer
-        uses: hashicorp/setup-packer@main
-        with:
-          version: latest
+      - name: Log in to registry
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${REGISTRY} -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Clone and install push tool
-        run: |
-          git clone https://github.com/CamdenClark/localactions-registry.git /tmp/localactions-registry
-          cd /tmp/localactions-registry/push
-          bun install
-
-      - name: Initialize Packer
+      - name: Set timestamp
         if: >-
           github.event_name != 'workflow_dispatch' ||
           github.event.inputs.ubuntu_version == '' ||
           github.event.inputs.ubuntu_version == matrix.version
-        working-directory: images
-        run: packer init .
+        run: echo "TIMESTAMP=$(date +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
 
       - name: Build image
         if: >-
@@ -71,12 +61,19 @@ jobs:
           github.event.inputs.ubuntu_version == matrix.version
         working-directory: images
         run: |
-          packer build \
-            -var-file=${{ matrix.varfile }} \
-            -var "docker_repository=${REGISTRY}/${IMAGE_NAME}" \
-            -var "docker_push=true" \
-            -var "docker_login_server=${REGISTRY}" \
-            -var "docker_login_username=${{ secrets.REGISTRY_USERNAME }}" \
-            -var "docker_login_password=${{ secrets.REGISTRY_PASSWORD }}" \
-            -var "push_tool_dir=/tmp/localactions-registry/push" \
+          docker build \
+            --build-arg BASE_IMAGE=${{ matrix.base_image }} \
+            --build-arg IMAGE_OS=${{ matrix.os }} \
+            --build-arg TOOLSET_FILE=${{ matrix.toolset }} \
+            -t ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }} \
+            -t ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }}-${TIMESTAMP} \
             .
+
+      - name: Push image
+        if: >-
+          github.event_name != 'workflow_dispatch' ||
+          github.event.inputs.ubuntu_version == '' ||
+          github.event.inputs.ubuntu_version == matrix.version
+        run: |
+          docker push ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }}
+          docker push ${REGISTRY}/${IMAGE_NAME}:${{ matrix.os }}-${TIMESTAMP}
