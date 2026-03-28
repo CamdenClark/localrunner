@@ -32,14 +32,16 @@ RUN bash /tmp/localactions/configure-runner-user.sh && \
 ###########################################################################
 # Layer 2: Vital + common APT packages
 ###########################################################################
-RUN bash /imagegeneration/installers/install-apt-vital.sh && \
+RUN apt-get update && \
+    bash /imagegeneration/installers/install-apt-vital.sh && \
     bash /imagegeneration/installers/install-apt-common.sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ###########################################################################
 # Layer 3: Git + Git LFS + GitHub CLI
 ###########################################################################
-RUN bash /imagegeneration/installers/install-git.sh && \
+RUN apt-get update && \
+    bash /imagegeneration/installers/install-git.sh && \
     bash /imagegeneration/installers/install-git-lfs.sh && \
     bash /imagegeneration/installers/install-github-cli.sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -53,7 +55,8 @@ RUN bash /imagegeneration/installers/install-nvm.sh && \
 ###########################################################################
 # Layer 5: dpkg config + yq + Python + pipx + zstd
 ###########################################################################
-RUN bash /imagegeneration/installers/configure-dpkg.sh && \
+RUN apt-get update && \
+    bash /imagegeneration/installers/configure-dpkg.sh && \
     bash /imagegeneration/installers/install-yq.sh && \
     bash /imagegeneration/installers/install-python.sh && \
     bash /imagegeneration/installers/install-pipx-packages.sh && \
@@ -63,7 +66,8 @@ RUN bash /imagegeneration/installers/configure-dpkg.sh && \
 ###########################################################################
 # Layer 6: Docker CLI
 ###########################################################################
-RUN bash /imagegeneration/installers/install-docker.sh && \
+RUN apt-get update && \
+    bash /imagegeneration/installers/install-docker.sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ###########################################################################
