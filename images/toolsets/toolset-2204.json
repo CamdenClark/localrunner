@@ -101,11 +101,6 @@
             }
         ]
     },
-    "java": {
-        "default": "17",
-        "versions": ["17"],
-        "maven": "3.9.14"
-    },
     "node": {
         "default": "20"
     },

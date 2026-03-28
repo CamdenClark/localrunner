@@ -95,11 +95,9 @@ build {
     environment_vars = ["HELPER_SCRIPTS=${var.helper_script_folder}", "INSTALLER_SCRIPT_FOLDER=${var.installer_script_folder}", "DEBIAN_FRONTEND=noninteractive"]
     scripts = [
       "scripts/build/install-apt-common.sh",
-      "scripts/build/install-cmake.sh",
       "scripts/build/install-git.sh",
       "scripts/build/install-git-lfs.sh",
       "scripts/build/install-github-cli.sh",
-      "scripts/build/install-java-tools.sh",
       "scripts/build/install-nvm.sh",
       "scripts/build/install-nodejs.sh",
       "scripts/build/configure-dpkg.sh",
@@ -107,7 +105,6 @@ build {
       "scripts/build/install-python.sh",
       "scripts/build/install-pipx-packages.sh",
       "scripts/build/install-zstd.sh",
-      "scripts/build/install-ninja.sh",
     ]
   }
 
