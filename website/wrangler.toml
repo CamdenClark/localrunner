@@ -1,6 +1,10 @@
 name = "localactions-website"
 main = "worker.ts"
 compatibility_date = "2024-12-01"
+routes = [
+  { pattern = "localactions.dev", custom_domain = true },
+  { pattern = "www.localactions.dev", custom_domain = true }
+]
 
 [assets]
 directory = "public"
