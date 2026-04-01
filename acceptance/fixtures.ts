@@ -4,6 +4,7 @@ export interface AcceptanceFixture {
   commit: string;
   workflow: string;
   job?: string;
+  matrix?: string[];
   event: string;
   expected: "succeeded" | "failed";
 }
@@ -39,6 +40,32 @@ export const fixtures: AcceptanceFixture[] = [
     repo: "CamdenClark/localactions-tests",
     commit: "a2de9845095610494921f28920adfafc183c3ec7",
     workflow: ".github/workflows/artifact-upload.yml",
+    event: "push",
+    expected: "succeeded",
+  },
+  {
+    name: "chalk/chalk — npm test",
+    repo: "chalk/chalk",
+    commit: "aa06bb5ac3f14df9fda8cfb54274dfc165ddfdef",
+    workflow: ".github/workflows/main.yml",
+    matrix: ["node-version:18"],
+    event: "push",
+    expected: "succeeded",
+  },
+  {
+    name: "date-fns/date-fns — code quality",
+    repo: "date-fns/date-fns",
+    commit: "dd66398305c2b015fba3c1b3d31ccff42ee8d4cf",
+    workflow: ".github/workflows/code_quality.yaml",
+    event: "push",
+    expected: "succeeded",
+  },
+  {
+    name: "tj/commander.js — tests",
+    repo: "tj/commander.js",
+    commit: "8247364da749736570161e95682b07fc2d72497b",
+    workflow: ".github/workflows/tests.yml",
+    matrix: ["os:ubuntu-latest", "node-version:22.x"],
     event: "push",
     expected: "succeeded",
   },
