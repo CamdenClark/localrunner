@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { rmSync } from "fs";
 
-const CLI_PATH = join(import.meta.dir, "..", "cli.ts");
+const CLI_PATH = join(import.meta.dir, "..", "src", "cli.ts");
 const TIMEOUT = 5 * 60 * 1000; // 5 minutes per test
 
 // Sharding support: set SHARD_INDEX and SHARD_TOTAL to split fixtures across CI runners
@@ -49,6 +49,11 @@ describe("acceptance", () => {
         const args = ["bun", CLI_PATH, fixture.event, "-W", fixture.workflow, "--port", String(port)];
         if (fixture.job) {
           args.push("-j", fixture.job);
+        }
+        if (fixture.matrix) {
+          for (const m of fixture.matrix) {
+            args.push("-m", m);
+          }
         }
 
         const proc = Bun.spawn(args, {
