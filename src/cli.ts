@@ -860,7 +860,7 @@ async function main() {
             dockerImage,
             services: selectedJob.services,
             output,
-            timeoutMinutes: selectedJob["timeout-minutes"] != null ? Number(selectedJob["timeout-minutes"]) : undefined,
+            timeoutMinutes: selectedJob["timeout-minutes"] != null ? Number(evaluateExpressions(String(selectedJob["timeout-minutes"]), exprCtx)) : undefined,
             jobOutputDefs: selectedJob.outputs,
           });
         } else {
@@ -882,7 +882,7 @@ async function main() {
             dockerImage,
             services: selectedJob.services,
             output,
-            timeoutMinutes: selectedJob["timeout-minutes"] != null ? Number(selectedJob["timeout-minutes"]) : undefined,
+            timeoutMinutes: selectedJob["timeout-minutes"] != null ? Number(evaluateExpressions(String(selectedJob["timeout-minutes"]), exprCtx)) : undefined,
             jobOutputDefs: selectedJob.outputs,
           });
         }
