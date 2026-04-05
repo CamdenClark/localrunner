@@ -279,8 +279,9 @@ export async function launchRunner(opts: {
   const runnerExit = proc!.exited;
 
   const timeoutMs = timeoutMinutes * 60 * 1000;
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<string>((resolve) => {
-    setTimeout(() => {
+    timeoutTimer = setTimeout(() => {
       output.emit({ type: "info", message: `\nJob timed out after ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}.` });
       cancelled = true;
       if (proc) {
@@ -298,6 +299,9 @@ export async function launchRunner(opts: {
     runnerExit.then(() => "cancelled" as string),
     timeoutPromise,
   ]);
+
+  // Clear the timeout so it doesn't keep the process alive
+  if (timeoutTimer) clearTimeout(timeoutTimer);
 
   await Promise.allSettled([stdoutPipe, stderrPipe]);
   await new Promise((r) => setTimeout(r, 500));

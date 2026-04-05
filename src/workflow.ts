@@ -3,7 +3,7 @@ import { z } from "zod";
 // --- Zod schemas for GitHub Actions workflow YAML ---
 
 // YAML parses bare numbers/booleans as non-strings, but GitHub Actions env values are always strings
-const EnvSchema = z.record(z.union([z.string(), z.number(), z.boolean()]).transform(String));
+const EnvSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]).transform(v => v == null ? "" : String(v)));
 
 const StepSchema = z.object({
   uses: z.string().optional(),
@@ -77,6 +77,7 @@ export type Job = z.infer<typeof JobSchema>;
 // `on` can be: string, array of strings, or object with event configs
 const EventConfigSchema = z.union([
   z.null(),
+  z.array(z.any()),
   z.object({
     branches: z.array(z.string()).optional(),
     "branches-ignore": z.array(z.string()).optional(),

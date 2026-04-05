@@ -21,7 +21,7 @@ export interface RepoContext {
 export async function getRepoContext(): Promise<RepoContext> {
   // Parse owner/repo from git remote so we can fire all API calls in parallel
   const remoteUrl = (await $`git remote get-url origin`.text()).trim();
-  const match = remoteUrl.match(/[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
+  const match = remoteUrl.match(/[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
   if (!match) throw new Error(`Could not parse owner/repo from remote URL: ${remoteUrl}`);
   const [, remoteOwner, remoteRepo] = match;
 
